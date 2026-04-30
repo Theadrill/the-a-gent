@@ -103,7 +103,8 @@ Se um arquivo estiver ficando gigantesco, a IA deve primeiro avaliar: "Este arqu
   },
   "seguranca": { 
     "workdir": "C:/Projetos/Dev", 
-    "confirmacao_ativa": true 
+    "confirmacao_ativa": true,
+    "max_file_size_mb": 2
   }
 }
 ```
