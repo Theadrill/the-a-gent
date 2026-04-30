@@ -1,6 +1,7 @@
 node_modules/
 .env
-data/
+data/*.db
+temp_workspace/
 /auth_info/
 /.vscode/
 npm-debug.log

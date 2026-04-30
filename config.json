@@ -1,6 +1,7 @@
 {
   "api": {
     "provider": "ollama",
+    "model": "llama3.2",
     "fallback_provider": "gemini"
   },
   "memoria": {
