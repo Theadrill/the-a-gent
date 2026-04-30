@@ -1,0 +1,13 @@
+{
+  "api": {
+    "provider": "ollama",
+    "fallback_provider": "gemini"
+  },
+  "memoria": {
+    "max_buffer": 15,
+    "db_path": "./data/agent_memory.db"
+  },
+  "seguranca": {
+    "confirmacao_ativa": true
+  }
+}
