@@ -88,7 +88,7 @@ Este arquivo exporta uma única função assíncrona `initWhatsApp(onMessageRece
    const events = require('events');
    const pino = require('pino');
    const qrcode = require('qrcode-terminal');
-   const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+   const { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
    const socketEmitter = new events.EventEmitter();
    const isConnecting = { value: false };
    ```
@@ -118,12 +118,16 @@ Este arquivo exporta uma única função assíncrona `initWhatsApp(onMessageRece
        }
        ```
        Sem essa checagem, objetos parcialmente iniciais podem causar exceções posteriores durante `makeWASocket` ou `saveCreds`.
-6. Crie o socket passando `logger` e `auth: state`.
-7. Registre o update de credenciais com proteção de tipo: 
-   - Ao receber o evento `creds.update`, adicione um bloco `try/catch`.
-   - Antes de chamar `saveCreds()`, valide `typeof saveCreds === 'function'`.
-   - Se não for função, exiba `console.warn('[WHATSAPP] saveCreds não é uma função')`.
-   - Se ocorrer erro, exiba `console.error('[WHATSAPP][ERRO] saveCreds', err)`.
+6. Crie o socket utilizando a versão mais recente para evitar erros de protocolo (como o erro 405 Method Not Allowed). Utilize também um identificador de `browser` estável:
+    ```javascript
+    const { version } = await fetchLatestBaileysVersion();
+    const sock = makeWASocket({ 
+       auth: state, 
+       logger, 
+       version, 
+       browser: ['The A-gent', 'Chrome', '120.0.0'] 
+    });
+    ```
 7. Registre o update de credenciais com proteção de tipo: 
     - Ao receber o evento `creds.update`, adicione um bloco `try/catch`.
     - Antes de chamar `saveCreds()`, valide `typeof saveCreds === 'function'`.
@@ -165,7 +169,8 @@ Este arquivo exporta uma única função assíncrona `initWhatsApp(onMessageRece
         ```
      - **Reset da Trava (Obrigatório):** Defina `isConnecting.value = false;` imediatamente antes de qualquer `return`.
      - Se o motivo for logout (`reasonCode === DisconnectReason.loggedOut`), exiba `[WHATSAPP] desconectado: loggedOut` no log e retorne.
-     - Se o motivo NÃO for logout, agende a reconexão com `setTimeout`. **Atenção:** dentro do callback do `setTimeout`, antes de chamar `initWhatsApp`, verifique se `isConnecting.value` é verdadeiro (se sim, retorne); caso contrário, defina `isConnecting.value = true;` para garantir que múltiplas reconexões não ocorram simultaneamente. Adicione `catch(err => console.error('[WHATSAPP][ERRO] reconectar', err))` na chamada.
+     - Se o motivo NÃO for logout, agende a reconexão com `setTimeout`. 
+     - **Atenção (Lógica de Re-entrada):** No callback do `setTimeout`, defina `reconnectTimer = null` antes de prosseguir. Verifique se `isConnecting.value` já é verdadeiro (se sim, retorne); se for falso, chame `initWhatsApp` diretamente. **Não** defina `isConnecting.value = true` dentro do timer, deixe que a função `initWhatsApp` gerencie a trava em seu início para evitar deadlocks (onde a função aborta por achar que ela mesma já está rodando). Adicione `catch(err => console.error('[WHATSAPP][ERRO] reconectar', err))` na chamada.
 9. Se for conectado (open), logar: `console.log('[WHATSAPP] Conectado!');`.
 
 10. Registre o listener `messages.upsert` com validação defensiva e Try/Catch:
