@@ -61,6 +61,7 @@ Se um arquivo estiver ficando gigantesco, a IA deve primeiro avaliar: "Este arqu
 
 **Scripts de Teste:** Todo script de teste deve ficar dentro da pasta `TMP_SCRIPTS` na raiz do projeto. Cada arquivo de teste deve começar com comentários no início do arquivo que descrevam seu propósito, como executá-lo e qual comportamento ele valida.
  
+⚠️ **REGRA DE VERSIONAMENTO:** É terminantemente proibido realizar comandos de `git commit` ou `git push` (sync) de forma automática. O agente só deve realizar commit e sync quando solicitado explicitamente pelo usuário.
 
 ### Estrutura de Diretórios
 

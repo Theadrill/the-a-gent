@@ -13,6 +13,7 @@
 3. **Explicação de Código:** Jamais despeje código sem contexto. Explique a função de cada bloco, especialmente os "listeners" de eventos do Baileys.
 4. **Projeto é `commonjs`:** O `package.json` tem `"type": "commonjs"`. Use `require()` em todos os arquivos. **Não use** `import/export`.
 5. **Nunca modificar os módulos da Fase 1** sem instrução explícita.
+6. **Versionamento Controlado:** É terminantemente proibido realizar comandos de `git commit` ou `git push` (sync) de forma automática. O agente só deve realizar commit e sync quando solicitado explicitamente pelo usuário.
 
 ## REGRA CRÍTICA DE EXECUÇÃO (OBRIGATÓRIA PARA MODELOS FLASH)
 
