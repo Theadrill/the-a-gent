@@ -59,6 +59,9 @@ Se um arquivo estiver ficando gigantesco, a IA deve primeiro avaliar: "Este arqu
 
 - **Plugins e Integrações:** Todas as integrações (WhatsApp, Telegram, etc.) devem obrigatoriamente residir na pasta `plugins`.
 
+**Scripts de Teste:** Todo script de teste deve ficar dentro da pasta `TMP_SCRIPTS` na raiz do projeto. Cada arquivo de teste deve começar com comentários no início do arquivo que descrevam seu propósito, como executá-lo e qual comportamento ele valida.
+ 
+
 ### Estrutura de Diretórios
 
 ```

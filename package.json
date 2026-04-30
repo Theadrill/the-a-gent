@@ -1,7 +1,7 @@
 {
   "name": "the-a-gent",
   "version": "0.1.0",
-  "description": "The A-gent - Fase 1 core and configuration",
+  "description": "The A-gent",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
