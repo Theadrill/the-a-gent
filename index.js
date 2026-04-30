@@ -48,13 +48,14 @@ async function start() {
       }
 
       try {
-        // 2. Salva a mensagem do usuário no banco de dados
-        await memoryManager.salvarMensagem('user', input);
-
         console.log('\n🧠 O Agente está pensando...');
 
-        // 3. Constrói o prompt com base no histórico e entrada atual
+        // 2. Constrói o prompt com base no histórico ANTERIOR (antes de salvar a msg atual)
+        // IMPORTANTE: salvarMensagem só é chamado DEPOIS para não contaminar o histórico
         const prompt = await promptBuilder.buildPrompt(input);
+
+        // 3. Salva a mensagem do usuário no banco APÓS montar o prompt
+        await memoryManager.salvarMensagem('user', input);
 
         // 4. Envia para o LLM
         const rawResponse = await llmClient.llmClient(prompt);
