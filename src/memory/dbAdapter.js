@@ -26,7 +26,7 @@ function init() {
     db = new sqlite3.Database(dbPath, (err) => {
       if (err) return reject(err);
 
-      const createSQL = `
+      const createMessages = `
         CREATE TABLE IF NOT EXISTS messages (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           role TEXT NOT NULL,
@@ -34,9 +34,22 @@ function init() {
           timestamp INTEGER NOT NULL
         )`;
 
-      db.run(createSQL, (err) => {
+      const createPending = `
+        CREATE TABLE IF NOT EXISTS pending_actions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          sender TEXT NOT NULL,
+          tool TEXT NOT NULL,
+          params TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          expires_at INTEGER NOT NULL
+        )`;
+
+      db.run(createMessages, (err) => {
         if (err) return reject(err);
-        resolve(db);
+        db.run(createPending, (err) => {
+          if (err) return reject(err);
+          resolve(db);
+        });
       });
     });
   });
@@ -47,8 +60,57 @@ function getDb() {
   return db;
 }
 
+function salvarPendingAction(sender, tool, params) {
+  return new Promise((resolve, reject) => {
+    const now = Date.now();
+    const expiresAt = now + 5 * 60 * 1000;
+    const sql = 'INSERT INTO pending_actions (sender, tool, params, created_at, expires_at) VALUES (?, ?, ?, ?, ?)';
+    db.run(sql, [sender, tool, JSON.stringify(params), now, expiresAt], function (err) {
+      if (err) return reject(err);
+      resolve({ id: this.lastID, sender, tool, params });
+    });
+  });
+}
+
+function buscarPendingAction(sender) {
+  return new Promise((resolve, reject) => {
+    const now = Date.now();
+    const sql = 'SELECT id, tool, params, created_at FROM pending_actions WHERE sender = ? AND expires_at > ? ORDER BY created_at DESC LIMIT 1';
+    db.get(sql, [sender, now], (err, row) => {
+      if (err) return reject(err);
+      if (!row) return resolve(null);
+      resolve({ id: row.id, tool: row.tool, params: JSON.parse(row.params) });
+    });
+  });
+}
+
+function removerPendingAction(id) {
+  return new Promise((resolve, reject) => {
+    const sql = 'DELETE FROM pending_actions WHERE id = ?';
+    db.run(sql, [id], function (err) {
+      if (err) return reject(err);
+      resolve({ removed: this.changes > 0 });
+    });
+  });
+}
+
+function limparPendingActionsExpiradas() {
+  return new Promise((resolve, reject) => {
+    const now = Date.now();
+    const sql = 'DELETE FROM pending_actions WHERE expires_at < ?';
+    db.run(sql, [now], function (err) {
+      if (err) return reject(err);
+      resolve({ removidas: this.changes });
+    });
+  });
+}
+
 module.exports = {
   init,
   getDb,
   dbPath,
+  salvarPendingAction,
+  buscarPendingAction,
+  removerPendingAction,
+  limparPendingActionsExpiradas,
 };

@@ -11,6 +11,9 @@ const { salvarMensagem, buscarUltimasMensagens } = require('./src/memory/memoryM
 const { buildPrompt } = require('./src/core/promptBuilder');
 const { llmClient } = require('./src/core/llmClient');
 const { parseAndValidate } = require('./src/core/jsonExtractor');
+const { executeToolCall } = require('./src/tools/toolManager');
+const { formatToolResult } = require('./src/utils/toolFormatter');
+const dbAdapter = require('./src/memory/dbAdapter');
 const config = require('./config.json');
 
 if (!salvarMensagem || !buscarUltimasMensagens || !llmClient || !parseAndValidate || !buildPrompt) {
@@ -23,14 +26,75 @@ const MAX_BUFFER = (() => {
   return Number.isFinite(v) && v > 0 ? v : 20;
 })();
 
+const MAX_TOOL_ITERATIONS = 5;
+
 console.log('[BOOT] The A-gent iniciando...');
 console.log('[BOOT] Provedor:', config.api.provider, '/ Modelo:', config.api.model);
 console.log('[BOOT] Buffer de memoria:', MAX_BUFFER, 'mensagens');
+console.log('[BOOT] Max iteracoes de ferramenta:', MAX_TOOL_ITERATIONS);
 console.log('[BOOT] Conectando ao WhatsApp...');
+
+async function processToolLoop(sock, sender, msg) {
+  let iterations = 0;
+
+  while (iterations < MAX_TOOL_ITERATIONS) {
+    iterations++;
+    console.log('[LOOP] Iteracao', iterations, 'de', MAX_TOOL_ITERATIONS);
+
+    const historico = await buscarUltimasMensagens(MAX_BUFFER);
+    const promptPayload = await buildPrompt('[Continuacao automatica]', historico);
+    const respostaBruta = await llmClient(promptPayload);
+
+    if (typeof respostaBruta !== 'string') {
+      throw new Error('Resposta do LLM invalida no loop');
+    }
+
+    const parsed = parseAndValidate(respostaBruta);
+    if (!parsed || !parsed.data) {
+      throw new Error('Resposta do LLM nao contem dados validos');
+    }
+
+    const data = parsed.data;
+
+    const toolCall = data.tool_call || (data.acao && data.acao !== null
+      ? { tool: data.acao, params: data.parametros }
+      : null);
+
+    if (!toolCall) {
+      if (data.resposta) {
+        await salvarMensagem('assistant', data.resposta);
+        if (sock && typeof sock.sendMessage === 'function') {
+          await sock.sendMessage(sender, { text: data.resposta });
+        }
+      }
+      return;
+    }
+
+    console.log('[LOOP] Chamando ferramenta:', toolCall.tool);
+    const result = await executeToolCall({ tool: toolCall.tool, params: toolCall.params || {} });
+
+    if (result.metadata && result.metadata.requiresConfirmation) {
+      await dbAdapter.salvarPendingAction(sender, toolCall.tool, result.metadata.toolCallRequest.params);
+      if (sock && typeof sock.sendMessage === 'function') {
+        await sock.sendMessage(sender, { text: `Preciso de permissao para: ${toolCall.tool}. Confirma? (sim/nao)` });
+      }
+      return;
+    }
+
+    const formatted = formatToolResult(toolCall.tool, result);
+    await salvarMensagem('system', formatted);
+  }
+
+  console.log('[LOOP] Maximo de iteracoes atingido');
+  if (sock && typeof sock.sendMessage === 'function') {
+    await sock.sendMessage(sender, { text: 'Nao foi possivel concluir a operacao apos varias tentativas. Tente simplificar o comando.' });
+  }
+}
 
 async function processTextMessage(sock, sender, text, msg) {
   try {
     console.log('[PROCESS_TEXT] Mensagem recebida de', sender, ':', text ? text.slice(0, 50) : '(midia)');
+
     if (msg?.key) {
       if (typeof sock.readMessages === 'function') {
         await sock.readMessages([msg.key]);
@@ -44,24 +108,67 @@ async function processTextMessage(sock, sender, text, msg) {
       console.warn('[WHATSAPP] sock.sendPresenceUpdate nao e uma funcao');
     }
 
+    const pendingAction = await dbAdapter.buscarPendingAction(sender);
+    if (pendingAction && /^(sim|s|yes|confirmar)$/i.test(text.trim())) {
+      console.log('[PROCESS_TEXT] Confirmacao recebida para:', pendingAction.tool);
+      const result = await executeToolCall({ tool: pendingAction.tool, params: pendingAction.params });
+      await dbAdapter.removerPendingAction(pendingAction.id);
+
+      const formatted = formatToolResult(pendingAction.tool, result);
+      await salvarMensagem('system', formatted);
+
+      return await processToolLoop(sock, sender, msg);
+    }
+
+    if (pendingAction && /^(nao|n|no|cancelar)$/i.test(text.trim())) {
+      await dbAdapter.removerPendingAction(pendingAction.id);
+      if (sock && typeof sock.sendMessage === 'function') {
+        await sock.sendMessage(sender, { text: 'Acao cancelada.' });
+      }
+      return;
+    }
+
     const safeText = text.length > 10000 ? text.slice(0, 10000) + '\n\n[TEXTO TRUNCADO]' : text;
+    await salvarMensagem('user', safeText);
+
     const promptPayload = await buildPrompt(safeText);
     const respostaBruta = await llmClient(promptPayload);
 
     if (typeof respostaBruta !== 'string') throw new Error('Resposta do LLM invalida');
     const parsed = parseAndValidate(respostaBruta);
 
-    if (!parsed || !parsed.data || !parsed.data.resposta) {
-      throw new Error('Resposta do LLM nao contem o campo "resposta"');
+    if (!parsed || !parsed.data) {
+      throw new Error('Resposta do LLM nao contem dados validos');
     }
 
-    await salvarMensagem('user', safeText);
-    await salvarMensagem('assistant', parsed.data.resposta);
+    const data = parsed.data;
+    const toolCall = data.tool_call || (data.acao && data.acao !== null
+      ? { tool: data.acao, params: data.parametros }
+      : null);
 
-    if (sock && typeof sock.sendMessage === 'function') {
-      await sock.sendMessage(sender, { text: parsed.data.resposta });
-    } else {
-      console.warn('[WHATSAPP] sock.sendMessage nao e uma funcao');
+    if (toolCall) {
+      console.log('[PROCESS_TEXT] Acao detectada:', toolCall.tool);
+      const result = await executeToolCall({ tool: toolCall.tool, params: toolCall.params || {} });
+
+      if (result.metadata && result.metadata.requiresConfirmation) {
+        await dbAdapter.salvarPendingAction(sender, toolCall.tool, result.metadata.toolCallRequest.params);
+        if (sock && typeof sock.sendMessage === 'function') {
+          await sock.sendMessage(sender, { text: `Preciso de permissao para: ${toolCall.tool}. Confirma? (sim/nao)` });
+        }
+        return;
+      }
+
+      const formatted = formatToolResult(toolCall.tool, result);
+      await salvarMensagem('system', formatted);
+
+      return await processToolLoop(sock, sender, msg);
+    }
+
+    if (data.resposta) {
+      await salvarMensagem('assistant', data.resposta);
+      if (sock && typeof sock.sendMessage === 'function') {
+        await sock.sendMessage(sender, { text: data.resposta });
+      }
     }
   } catch (error) {
     console.error('[PROCESS_TEXT][ERRO]', error);
@@ -83,6 +190,9 @@ async function onMessageReceived(sock, messages, type) {
 }
 
 (async () => {
+  await dbAdapter.init();
+  await dbAdapter.limparPendingActionsExpiradas();
+
   const sock = await initWhatsApp(onMessageReceived);
   if (!sock) {
     console.error('[BOOT][FALHA] Nao foi possivel conectar ao WhatsApp');
