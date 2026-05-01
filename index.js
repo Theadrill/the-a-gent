@@ -71,12 +71,21 @@ async function processToolLoop(sock, sender, msg) {
     }
 
     console.log('[LOOP] Chamando ferramenta:', toolCall.tool);
-    const result = await executeToolCall({ tool: toolCall.tool, params: toolCall.params || {} });
+    const result = await executeToolCall({ tool: toolCall.tool, params: toolCall.params || {}, skipConfirmation: true });
+    console.log('[LOOP] Resultado da ferramenta: success=' + result.success + ' error=' + (result.error || 'none'));
 
-    if (result.metadata && result.metadata.requiresConfirmation) {
-      await dbAdapter.salvarPendingAction(sender, toolCall.tool, result.metadata.toolCallRequest.params);
-      if (sock && typeof sock.sendMessage === 'function') {
-        await sock.sendMessage(sender, { text: `Preciso de permissao para: ${toolCall.tool}. Confirma? (sim/nao)` });
+    if (result.success) {
+      const toolResultMsg = formatToolResult(toolCall.tool, result);
+      await salvarMensagem('system', toolResultMsg);
+      const promptPayload = await buildPrompt('[Gere uma resposta natural para o usuario informando o resultado da ferramenta acima. Nao chame ferramentas.]');
+      const respostaBruta = await llmClient(promptPayload);
+      if (typeof respostaBruta === 'string') {
+        const parsed = parseAndValidate(respostaBruta);
+        const reply = parsed?.data?.resposta || toolResultMsg;
+        await salvarMensagem('assistant', reply);
+        if (sock && typeof sock.sendMessage === 'function') {
+          await sock.sendMessage(sender, { text: reply });
+        }
       }
       return;
     }
@@ -135,7 +144,9 @@ async function processTextMessage(sock, sender, text, msg) {
     const respostaBruta = await llmClient(promptPayload);
 
     if (typeof respostaBruta !== 'string') throw new Error('Resposta do LLM invalida');
+    console.log('[PROCESS_TEXT] Resposta bruta do LLM:', respostaBruta.slice(0, 300));
     const parsed = parseAndValidate(respostaBruta);
+    console.log('[PROCESS_TEXT] JSON parseado:', JSON.stringify(parsed.data).slice(0, 300));
 
     if (!parsed || !parsed.data) {
       throw new Error('Resposta do LLM nao contem dados validos');
@@ -148,6 +159,16 @@ async function processTextMessage(sock, sender, text, msg) {
 
     if (toolCall) {
       console.log('[PROCESS_TEXT] Acao detectada:', toolCall.tool);
+
+      if (toolCall.tool === 'reiniciarAgente') {
+        await salvarMensagem('assistant', 'Reiniciando o agente...');
+        const result = await executeToolCall({ tool: 'reiniciarAgente', params: {}, skipConfirmation: true });
+        if (sock && typeof sock.sendMessage === 'function') {
+          await sock.sendMessage(sender, { text: result.success ? '🔄 Reiniciando...' : `Falha: ${result.error}` });
+        }
+        return;
+      }
+
       const result = await executeToolCall({ tool: toolCall.tool, params: toolCall.params || {} });
 
       if (result.metadata && result.metadata.requiresConfirmation) {
@@ -193,11 +214,35 @@ async function onMessageReceived(sock, messages, type) {
   await dbAdapter.init();
   await dbAdapter.limparPendingActionsExpiradas();
 
+  const restartFlag = path.resolve(__dirname, '.restart');
+  let foiReinicio = false;
+  try {
+    if (fs.existsSync(restartFlag)) {
+      foiReinicio = true;
+      fs.unlinkSync(restartFlag);
+    }
+  } catch (e) {}
+
   const sock = await initWhatsApp(onMessageReceived);
   if (!sock) {
     console.error('[BOOT][FALHA] Nao foi possivel conectar ao WhatsApp');
     console.error('[BOOT] Escaneie o QR Code acima ou verifique a sessao em auth_info/');
     process.exit(1);
   }
+
+  if (foiReinicio) {
+    setTimeout(async () => {
+      try {
+        const cfg = require('./config.json');
+        const contatos = cfg?.seguranca?.whitelist_contatos || [];
+        for (const c of contatos) {
+          if (sock && typeof sock.sendMessage === 'function') {
+            await sock.sendMessage(c, { text: '🔄 Agente reiniciado com sucesso!' }).catch(() => {});
+          }
+        }
+      } catch (e) {}
+    }, 3000);
+  }
+
   console.log('[BOOT] The A-gent pronto! Aguardando mensagens...');
 })();

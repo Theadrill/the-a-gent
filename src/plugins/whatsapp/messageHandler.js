@@ -30,13 +30,10 @@ async function handleMessage(sock, messages, type, processTextMessage) {
     if (type !== 'notify') return;
     if (!Array.isArray(messages)) return;
 
-    console.log('[MESSAGE_HANDLER] Recebidas ' + messages.length + ' mensagens, tipo: ' + type);
-
     const now = Math.floor(Date.now() / 1000);
 
     for (const msg of messages) {
       try {
-        console.log('[MESSAGE_HANDLER] Msg fromMe=' + msg.key?.fromMe + ' jid=' + msg.key?.remoteJid + ' id=' + msg.key?.id);
         const messageTimestamp = getMessageTimestamp(msg);
         if (!Number.isFinite(messageTimestamp)) continue;
         if (now - messageTimestamp > 60) continue;

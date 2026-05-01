@@ -1,14 +1,40 @@
 const { validateAction } = require('../core/securityLayer');
-const { lerArquivo, escreverArquivo, listarDiretorio, criarDiretorio } = require('./fileSystem');
+const { lerArquivo, escreverArquivo, listarDiretorio, criarDiretorio, removerArquivo } = require('./fileSystem');
 const { executarComando } = require('./osCommands');
+const { gitInit, gitAdd, gitCommit, gitPush, gitStatus } = require('./gitCommands');
+const { reiniciarAgente } = require('./systemCommands');
 const { ToolResult } = require('../utils/ToolResult');
+
+const toolAlias = {
+  criar_arquivo: 'escreverArquivo',
+  criar_pasta: 'criarDiretorio',
+  deletar_arquivo: 'removerArquivo',
+  deletar_pasta: 'removerDiretorio',
+  apagar_arquivo: 'removerArquivo',
+  excluir_arquivo: 'removerArquivo',
+  listar_pasta: 'listarDiretorio',
+  ler_arquivo: 'lerArquivo',
+  executar: 'executarComando',
+  git_commit: 'gitCommit',
+  git_push: 'gitPush',
+  git_status: 'gitStatus',
+  git_add: 'gitAdd',
+  git_init: 'gitInit',
+};
 
 const toolMap = {
   lerArquivo,
   escreverArquivo,
   listarDiretorio,
   criarDiretorio,
+  removerArquivo,
   executarComando,
+  gitInit,
+  gitAdd,
+  gitCommit,
+  gitPush,
+  gitStatus,
+  reiniciarAgente,
 };
 
 const CONFIRMATION_TOOLS = [
@@ -22,12 +48,15 @@ async function executeToolCall(toolCallRequest) {
       return ToolResult.fail('toolCallRequest invalido');
     }
 
-    const tool = toolCallRequest.tool;
+    let tool = toolCallRequest.tool;
     const params = toolCallRequest.params || {};
+    const skipConfirmation = toolCallRequest.skipConfirmation === true;
 
     if (!tool || typeof tool !== 'string') {
       return ToolResult.fail('tool ausente ou invalido em toolCallRequest');
     }
+
+    tool = toolAlias[tool] || tool;
 
     const validation = await validateAction(tool, params);
 
@@ -35,7 +64,7 @@ async function executeToolCall(toolCallRequest) {
       return ToolResult.fail(`Acao bloqueada: ${validation.reason}`);
     }
 
-    if (validation.status === 'requires_confirmation') {
+    if (validation.status === 'requires_confirmation' && !skipConfirmation) {
       return new ToolResult(false, null, `Acao requer confirmacao: ${validation.reason}`, {
         requiresConfirmation: true,
         toolCallRequest: { tool, params: validation.sanitizedParams || params },

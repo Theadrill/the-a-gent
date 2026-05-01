@@ -27,6 +27,8 @@ function formatToolResult(toolName, result) {
     output += `Arquivo salvo: ${result.data.caminho} (${result.data.tamanho} bytes)`;
   } else if (toolName === 'criarDiretorio' && result.data) {
     output += `Diretorio criado: ${result.data.caminho}`;
+  } else if (toolName === 'removerArquivo' && result.data) {
+    output += `Arquivo removido: ${result.data.caminho}`;
   }
 
   return output;

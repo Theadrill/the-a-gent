@@ -9,7 +9,15 @@ const workdir = path.resolve(config.seguranca.workdir || process.cwd());
 
 function toctouValidate(caminho) {
   try {
-    const real = fs.realpathSync(caminho, { throwIfNoEntry: false });
+    let real;
+    try {
+      real = fs.realpathSync(caminho, { throwIfNoEntry: false });
+    } catch (e) {
+      if (e.code === 'ENOENT') {
+        return { valid: true, reason: null };
+      }
+      throw e;
+    }
     if (real !== null && real !== undefined) {
       if (!real.startsWith(workdir)) {
         return { valid: false, reason: 'TOCTOU: caminho real do arquivo mudou e agora esta fora do workdir' };
@@ -164,4 +172,29 @@ async function criarDiretorio(caminho) {
   }
 }
 
-module.exports = { lerArquivo, escreverArquivo, listarDiretorio, criarDiretorio };
+async function removerArquivo(caminho) {
+  try {
+    if (typeof caminho !== 'string') {
+      return ToolResult.fail('caminho deve ser uma string');
+    }
+
+    const toctou = toctouValidate(caminho);
+    if (!toctou.valid) {
+      return ToolResult.fail(toctou.reason);
+    }
+
+    if (!fs.existsSync(caminho)) {
+      return ToolResult.fail('Arquivo nao encontrado');
+    }
+
+    fs.unlinkSync(caminho);
+    return ToolResult.ok({ caminho, removido: true });
+  } catch (error) {
+    if (error.code === 'EACCES') {
+      return ToolResult.fail('Permissao negada para remover arquivo');
+    }
+    return ToolResult.fail(`Erro ao remover arquivo: ${error.message}`);
+  }
+}
+
+module.exports = { lerArquivo, escreverArquivo, listarDiretorio, criarDiretorio, removerArquivo };

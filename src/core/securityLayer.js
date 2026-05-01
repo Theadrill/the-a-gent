@@ -13,6 +13,7 @@ const BLOCKED_COMMANDS = [
   'sudo', 'chmod', 'chown', 'dd', 'mkfs', 'fdisk', 'mount',
   'cmd', 'powershell', 'pwsh', 'wmic', 'msiexec', 'regedit',
   'taskkill', 'tasklist', 'net', 'sc', 'bcdedit', 'diskpart',
+  'sh', 'bash', 'zsh', 'ksh', 'dash',
 ];
 
 const BLOCKED_COMMANDS_SHELL = [
@@ -25,8 +26,9 @@ const BLOCKED_PATHS = isWin
   : ['/etc', '/boot', '/dev', '/proc', '/sys', '/root', '/var/log'];
 
 const CONFIRMATION_TOOLS = [
-  'escreverArquivo', 'criarDiretorio', 'removerArquivo', 'removerDiretorio',
-  'instalarPacote', 'executarComando',
+  'criarDiretorio',
+  'removerDiretorio',
+      'instalarPacote', 'executarComando',
 ];
 
 const CAMINHO_KEYS = {
@@ -120,6 +122,10 @@ async function validateAction(toolName, params) {
         return { status: 'blocked', reason: pathResult.reason };
       }
       Object.assign(params, pathResult.sanitized);
+    }
+
+    if (['gitCommit', 'gitPush', 'gitAdd'].includes(toolName) && config.seguranca.confirmacao_ativa !== false) {
+      return { status: 'requires_confirmation', reason: `Acao requer confirmacao: ${toolName}`, sanitizedParams: params };
     }
 
     if (toolName === 'executarComando') {

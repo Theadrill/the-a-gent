@@ -36,22 +36,32 @@ async function llmClient(prompt) {
       throw new Error(`Provedor não suportado: ${currentProvider}`);
     }
 
-    console.log(`[LLM] Tentando conexão com ${currentProvider} em ${apiUrl}`);
+    console.log(`[LLM] Enviando request para ${currentProvider} em ${apiUrl} (modelo: ${model})`);
+    console.log(`[LLM] Tamanho do prompt: ${prompt.length} caracteres`);
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(10000) // Timeout real de 10s
-    });
+    const startTime = Date.now();
+    let response;
+    try {
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(120000)
+      });
+    } catch (fetchErr) {
+      console.error(`[LLM][ERRO] Fetch falhou apos ${Date.now() - startTime}ms: ${fetchErr.message}`);
+      throw fetchErr;
+    }
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[LLM] Resposta recebida em ${elapsed}ms, status: ${response.status}`);
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     const data = await response.json();
+    console.log(`[LLM] JSON parseado, response.length=${data.response ? data.response.length : 0}`);
 
     if (currentProvider === 'ollama' && data.response) {
       return data.response;
