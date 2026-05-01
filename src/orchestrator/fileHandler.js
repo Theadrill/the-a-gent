@@ -31,7 +31,7 @@ async function handleFile(sock, sender, msg, processTextMessage) {
       return;
     }
 
-    const allowedExtensions = ['.js', '.ts', '.txt', '.json', '.md', '.py', '.env', '.sh'];
+    const allowedExtensions = ['.js', '.ts', '.txt', '.json', '.md', '.py'];
     const ext = path.extname(doc.fileName || '').toLowerCase();
     const mime = doc.mimetype || '';
 

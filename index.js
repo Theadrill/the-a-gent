@@ -12,18 +12,25 @@ const { buildPrompt } = require('./src/core/promptBuilder');
 const { llmClient } = require('./src/core/llmClient');
 const { parseAndValidate } = require('./src/core/jsonExtractor');
 const config = require('./config.json');
-const dbAdapter = require('./src/memory/dbAdapter');
 
 if (!salvarMensagem || !buscarUltimasMensagens || !llmClient || !parseAndValidate || !buildPrompt) {
   console.error('[INDEX][CRITICO] Modulos da Fase 1 incompletos ou invalidos.');
   process.exit(1);
 }
 
-const maxBufferConfigured = Number(config?.memoria?.max_buffer || 0) || 0;
-const MAX_BUFFER = Number.isFinite(maxBufferConfigured) && maxBufferConfigured > 0 ? maxBufferConfigured : 20;
+const MAX_BUFFER = (() => {
+  const v = Number(config?.memoria?.max_buffer) || 0;
+  return Number.isFinite(v) && v > 0 ? v : 20;
+})();
+
+console.log('[BOOT] The A-gent iniciando...');
+console.log('[BOOT] Provedor:', config.api.provider, '/ Modelo:', config.api.model);
+console.log('[BOOT] Buffer de memoria:', MAX_BUFFER, 'mensagens');
+console.log('[BOOT] Conectando ao WhatsApp...');
 
 async function processTextMessage(sock, sender, text, msg) {
   try {
+    console.log('[PROCESS_TEXT] Mensagem recebida de', sender, ':', text ? text.slice(0, 50) : '(midia)');
     if (msg?.key) {
       if (typeof sock.readMessages === 'function') {
         await sock.readMessages([msg.key]);
@@ -38,8 +45,6 @@ async function processTextMessage(sock, sender, text, msg) {
     }
 
     const safeText = text.length > 10000 ? text.slice(0, 10000) + '\n\n[TEXTO TRUNCADO]' : text;
-    await dbAdapter.init();
-    const historico = await buscarUltimasMensagens(MAX_BUFFER);
     const promptPayload = await buildPrompt(safeText);
     const respostaBruta = await llmClient(promptPayload);
 
@@ -80,7 +85,9 @@ async function onMessageReceived(sock, messages, type) {
 (async () => {
   const sock = await initWhatsApp(onMessageReceived);
   if (!sock) {
-    console.error('[MAIN][CRITICO] Falha ao iniciar socket');
+    console.error('[BOOT][FALHA] Nao foi possivel conectar ao WhatsApp');
+    console.error('[BOOT] Escaneie o QR Code acima ou verifique a sessao em auth_info/');
     process.exit(1);
   }
+  console.log('[BOOT] The A-gent pronto! Aguardando mensagens...');
 })();

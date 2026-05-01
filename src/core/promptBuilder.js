@@ -1,4 +1,4 @@
-const memoryManager = require('../memory/memoryManager');
+const { buscarUltimasMensagens } = require('../memory/memoryManager');
 const config = require('../../config.json');
 
 // System Prompt mestre — definido uma única vez para evitar duplicação
@@ -30,7 +30,7 @@ async function buildPrompt(userInput) {
   let historicoFormatado = '';
 
   try {
-    const historico = await memoryManager.buscarUltimasMensagens(maxBuffer);
+    const historico = await buscarUltimasMensagens(maxBuffer);
     historicoFormatado = historico
       .map(msg => `[${new Date(msg.timestamp).toISOString()}] ${msg.role}: ${msg.content}`)
       .join('\n');

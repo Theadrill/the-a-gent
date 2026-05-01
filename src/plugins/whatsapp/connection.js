@@ -1,10 +1,8 @@
-const fs = require('fs');
-const path = require('path');
 const events = require('events');
+const path = require('path');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
-const { makeWASocket, DisconnectReason, fetchLatestBaileysVersion } = require('baileys');
-const { createWaSocket, enqueueCredsSave, writeCredsJsonAtomically, resolveDefaultAuthDir } = require('./sessionUtils');
+const { makeWASocket, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState } = require('baileys');
 
 // Singleton emitter (global guard to keep single instance across reloads)
 if (!global.__whatsapp_socket_emitter) global.__whatsapp_socket_emitter = new events.EventEmitter();
@@ -28,8 +26,7 @@ function setActiveSocket(sock) {
 const RECONNECT_DELAY = 5000; // ms
 let reconnectTimer = null;
 
-// logger em modo 'debug' para depuração aprofundada (ajustável via LOG_LEVEL)
-const logger = pino({ level: process.env.LOG_LEVEL || 'debug' });
+const logger = pino({ level: process.env.LOG_LEVEL || 'error' });
 
 async function initWhatsApp(onMessageReceived, options = {}) {
   try {
@@ -48,24 +45,23 @@ async function initWhatsApp(onMessageReceived, options = {}) {
 
     isConnecting.value = true; // acquire lock
 
-    const authFolder = options.authFolder || resolveDefaultAuthDir();
-
-    // create wa socket helper (returns auth/state/save)
-    let authWrapper = null;
+    const authFolder = options.authFolder || path.resolve(process.cwd(), 'auth_info');
+    let state, saveCreds;
     try {
-      authWrapper = await createWaSocket({ authDir: authFolder, logger });
+      const result = await useMultiFileAuthState(authFolder);
+      state = result.state;
+      saveCreds = result.saveCreds;
     } catch (err) {
-      isConnecting.value = false; // Ponto A
-      logger.error(`[WHATSAPP][ERRO] Auth state inválido ou timeout: ${err && err.message}`);
+      isConnecting.value = false;
+      logger.error(`[WHATSAPP][ERRO] Auth state falhou: ${err.message}`);
       return null;
     }
-
-    const { auth, state, saveCreds } = authWrapper;
-    if (!auth || !state) {
-      isConnecting.value = false; // Ponto A
-      logger.error('[WHATSAPP][ERRO] Auth state retornou forma inesperada');
+    if (!state) {
+      isConnecting.value = false;
+      logger.error('[WHATSAPP][ERRO] Auth state retornou nulo');
       return null;
     }
+    const auth = state;
 
     // Buscar versão para contornar bloqueios/erros 405 (Method Not Allowed)
     const { version } = await fetchLatestBaileysVersion();
@@ -79,14 +75,11 @@ async function initWhatsApp(onMessageReceived, options = {}) {
     });
     try { setActiveSocket(sock); } catch (e) { /* best-effort */ }
 
-    // Persist credentials on update (enqueue atomic saves)
     sock.ev.on('creds.update', async () => {
       try {
-        enqueueCredsSave(authFolder, async () => {
-          try { await writeCredsJsonAtomically(authFolder, state.creds); } catch (e) { logger.error('[WHATSAPP][ERRO] writeCreds', e && e.message); }
-        });
+        if (typeof saveCreds === 'function') await saveCreds();
       } catch (err) {
-        logger.error(`[WHATSAPP][ERRO] creds.update handler ${err && err.message}`);
+        console.error('[WHATSAPP][ERRO] creds.update', err);
       }
     });
 
@@ -97,11 +90,14 @@ async function initWhatsApp(onMessageReceived, options = {}) {
         socketEmitter.emit('connection.update', update);
 
         if (update.qr) {
-          try { qrcode.generate(update.qr, { small: true }); } catch (e) { /* non-fatal */ }
+          try {
+            console.log('[WHATSAPP] QR Code gerado. Escaneie com o WhatsApp.');
+            qrcode.generate(update.qr, { small: true });
+          } catch (e) { /* non-fatal */ }
         }
 
         if (update.connection === 'open') {
-          logger.info('[WHATSAPP][STATUS] connection open');
+          console.log('[WHATSAPP] Conectado!');
           socketEmitter.emit('open', update);
           // mark active and Ponto C: reset antes do retorno bem-sucedido
           try { setActiveSocket(sock); } catch (e) { /* best-effort */ }
@@ -114,7 +110,7 @@ async function initWhatsApp(onMessageReceived, options = {}) {
             logger.error('[WHATSAPP][ERRO] connection closed');
             socketEmitter.emit('close', update);
 
-            // Reset lock immediately (Ponto B)
+            sock.ev.removeAllListeners();
             isConnecting.value = false;
             // clear active socket
             try { setActiveSocket(null); } catch (e) { /* best-effort */ }
@@ -164,8 +160,7 @@ async function initWhatsApp(onMessageReceived, options = {}) {
       }
     });
 
-    // Emit the socket and return it after setup (success path). Reset lock before return (Ponto C)
-    socketEmitter.emit('socket.setup', sock);
+    socketEmitter.emit('socket', sock);
     isConnecting.value = false; // Ponto C: reset explicito antes do return
     return sock;
   } catch (error) {
