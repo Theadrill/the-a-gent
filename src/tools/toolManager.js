@@ -1,5 +1,5 @@
 const { validateAction } = require('../core/securityLayer');
-const { lerArquivo, escreverArquivo, listarDiretorio } = require('./fileSystem');
+const { lerArquivo, escreverArquivo, listarDiretorio, criarDiretorio } = require('./fileSystem');
 const { executarComando } = require('./osCommands');
 const { ToolResult } = require('../utils/ToolResult');
 
@@ -7,6 +7,7 @@ const toolMap = {
   lerArquivo,
   escreverArquivo,
   listarDiretorio,
+  criarDiretorio,
   executarComando,
 };
 

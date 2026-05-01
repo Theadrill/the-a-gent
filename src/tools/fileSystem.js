@@ -143,4 +143,25 @@ async function listarDiretorio(caminho) {
   }
 }
 
-module.exports = { lerArquivo, escreverArquivo, listarDiretorio };
+async function criarDiretorio(caminho) {
+  try {
+    if (typeof caminho !== 'string') {
+      return ToolResult.fail('caminho deve ser uma string');
+    }
+
+    const toctou = toctouValidate(caminho);
+    if (!toctou.valid) {
+      return ToolResult.fail(toctou.reason);
+    }
+
+    fs.mkdirSync(caminho, { recursive: true });
+    return ToolResult.ok({ caminho });
+  } catch (error) {
+    if (error.code === 'EACCES') {
+      return ToolResult.fail('Permissao negada para criar diretorio');
+    }
+    return ToolResult.fail(`Erro ao criar diretorio: ${error.message}`);
+  }
+}
+
+module.exports = { lerArquivo, escreverArquivo, listarDiretorio, criarDiretorio };
