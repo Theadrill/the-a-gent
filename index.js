@@ -1,99 +1,86 @@
-/**
- * index.js - O Maestro (Entry Point)
- * 
- * Este arquivo orquestra a comunicação entre o usuário, o banco de dados de memória
- * e o cérebro (LLM). Nesta Fase 1, a interação é feita via terminal (CLI).
- */
+const fs = require('fs');
+const path = require('path');
 
-const readline = require('readline');
+const logStream = fs.createWriteStream(path.resolve(__dirname, 'log.txt'), { flags: 'w' });
+const originalLog = console.log;
+const originalError = console.error;
+console.log = (...args) => { logStream.write(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 4) : String(a)).join(' ') + '\n'); originalLog(...args); };
+console.error = (...args) => { logStream.write('[ERRO] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 4) : String(a)).join(' ') + '\n'); originalError(...args); };
+
+const { salvarMensagem, buscarUltimasMensagens } = require('./src/memory/memoryManager');
+const { buildPrompt } = require('./src/core/promptBuilder');
+const { llmClient } = require('./src/core/llmClient');
+const { parseAndValidate } = require('./src/core/jsonExtractor');
+const config = require('./config.json');
 const dbAdapter = require('./src/memory/dbAdapter');
-const memoryManager = require('./src/memory/memoryManager');
-const promptBuilder = require('./src/core/promptBuilder');
-const llmClient = require('./src/core/llmClient');
-const jsonExtractor = require('./src/core/jsonExtractor');
 
-// Configuração da interface de leitura do terminal
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-  prompt: '👤 Você > '
-});
+if (!salvarMensagem || !buscarUltimasMensagens || !llmClient || !parseAndValidate || !buildPrompt) {
+  console.error('[INDEX][CRITICO] Modulos da Fase 1 incompletos ou invalidos.');
+  process.exit(1);
+}
 
-/**
- * Função principal que inicializa o sistema e inicia o loop de conversa.
- */
-async function start() {
-  console.log('\n--- 🤖 The A-gent: Fase 1 (Cérebro e Memória) ---');
-  console.log('Iniciando sistema e banco de dados...\n');
+const maxBufferConfigured = Number(config?.memoria?.max_buffer || 0) || 0;
+const MAX_BUFFER = Number.isFinite(maxBufferConfigured) && maxBufferConfigured > 0 ? maxBufferConfigured : 20;
 
+async function processTextMessage(sock, sender, text, msg) {
   try {
-    // 1. Inicializa o banco de dados SQLite
+    if (msg?.key) {
+      if (typeof sock.readMessages === 'function') {
+        await sock.readMessages([msg.key]);
+      } else {
+        console.warn('[WHATSAPP] sock.readMessages nao e uma funcao');
+      }
+    }
+    if (typeof sock.sendPresenceUpdate === 'function') {
+      await sock.sendPresenceUpdate('composing', sender);
+    } else {
+      console.warn('[WHATSAPP] sock.sendPresenceUpdate nao e uma funcao');
+    }
+
+    const safeText = text.length > 10000 ? text.slice(0, 10000) + '\n\n[TEXTO TRUNCADO]' : text;
     await dbAdapter.init();
-    console.log('✅ Memória de longo prazo pronta.');
-    console.log('Digite sua mensagem para começar. Digite "sair" para encerrar.\n');
+    const historico = await buscarUltimasMensagens(MAX_BUFFER);
+    const promptPayload = await buildPrompt(safeText);
+    const respostaBruta = await llmClient(promptPayload);
 
-    rl.prompt();
+    if (typeof respostaBruta !== 'string') throw new Error('Resposta do LLM invalida');
+    const parsed = parseAndValidate(respostaBruta);
 
-    rl.on('line', async (line) => {
-      const input = line.trim();
+    if (!parsed || !parsed.data || !parsed.data.resposta) {
+      throw new Error('Resposta do LLM nao contem o campo "resposta"');
+    }
 
-      if (input.toLowerCase() === 'sair') {
-        console.log('\nDesligando o sistema... Até logo!');
-        process.exit(0);
-      }
+    await salvarMensagem('user', safeText);
+    await salvarMensagem('assistant', parsed.data.resposta);
 
-      if (!input) {
-        rl.prompt();
-        return;
-      }
-
-      try {
-        console.log('\n🧠 O Agente está pensando...');
-
-        // 2. Constrói o prompt com base no histórico ANTERIOR (antes de salvar a msg atual)
-        // IMPORTANTE: salvarMensagem só é chamado DEPOIS para não contaminar o histórico
-        const prompt = await promptBuilder.buildPrompt(input);
-
-        // 3. Salva a mensagem do usuário no banco APÓS montar o prompt
-        await memoryManager.salvarMensagem('user', input);
-
-        // 4. Envia para o LLM
-        const rawResponse = await llmClient.llmClient(prompt);
-
-        // 5. Extrai e valida o JSON da resposta
-        const extraction = jsonExtractor.parseAndValidate(rawResponse);
-        const { data, success, error } = extraction;
-
-        // 6. Salva a resposta (texto natural) do assistente no banco
-        await memoryManager.salvarMensagem('assistant', data.resposta);
-
-        // 7. Exibe o resultado formatado
-        console.log('\n--- 🤖 Resposta do Agente ---');
-        console.log(`Mensagem: ${data.resposta}`);
-        
-        if (data.acao) {
-          console.log(`Ação Detectada: ${data.acao}`);
-          console.log(`Parâmetros: ${JSON.stringify(data.parametros, null, 2)}`);
-        }
-
-        if (!success) {
-          console.warn(`\n⚠️ Aviso: Resposta JSON instável. Erro: ${error}`);
-        }
-
-        console.log('-----------------------------\n');
-
-      } catch (err) {
-        console.error('\n❌ Erro no ciclo de processamento:', err.message);
-      }
-
-      rl.prompt();
-    });
-
+    if (sock && typeof sock.sendMessage === 'function') {
+      await sock.sendMessage(sender, { text: parsed.data.resposta });
+    } else {
+      console.warn('[WHATSAPP] sock.sendMessage nao e uma funcao');
+    }
   } catch (error) {
-    console.error('\n❌ Erro fatal ao iniciar o sistema:', error.message);
-    process.exit(1);
+    console.error('[PROCESS_TEXT][ERRO]', error);
+    if (sock && typeof sock.sendMessage === 'function') {
+      await sock.sendMessage(sender, { text: 'Erro interno ao processar sua solicitacao.' }).catch(e => {});
+    } else {
+      console.warn('[WHATSAPP] sock.sendMessage nao e uma funcao (erro no catch)');
+    }
   }
 }
 
-// Inicia o programa
-start();
+const { initWhatsApp } = require('./src/plugins/whatsapp/connection');
+const { handleMessage } = require('./src/plugins/whatsapp/messageHandler');
+
+async function onMessageReceived(sock, messages, type) {
+  try {
+    await handleMessage(sock, messages, type, processTextMessage);
+  } catch (err) { console.error('[MAIN][ERRO] onMessageReceived', err); }
+}
+
+(async () => {
+  const sock = await initWhatsApp(onMessageReceived);
+  if (!sock) {
+    console.error('[MAIN][CRITICO] Falha ao iniciar socket');
+    process.exit(1);
+  }
+})();
