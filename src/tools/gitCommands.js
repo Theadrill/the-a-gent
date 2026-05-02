@@ -90,25 +90,25 @@ async function gitCommitAndSync(mensagem) {
       if (commitResult.error && commitResult.error.includes('nothing to commit')) {
         const pushResult = await gitPush();
         if (!pushResult.success) {
-          return ToolResult.fail(`Nada para commitar. Push: ${pushResult.error}`);
+          return new ToolResult(false, null, `Nada para commitar. Push: ${pushResult.error}`, { immediateReply: true });
         }
-        return ToolResult.ok({
-          mensagem: 'Nada novo para commitar. Push realizado.',
-          detalhes: pushResult.data?.detalhes || '',
-        });
+    return new ToolResult(true, {
+      mensagem: 'Nada novo para commitar. Push realizado.',
+      detalhes: pushResult.data?.detalhes || '',
+    }, null, { immediateReply: true });
       }
       return commitResult;
     }
 
     const pushResult = await gitPush();
     if (!pushResult.success) {
-      return ToolResult.fail(`Commit feito, mas push falhou: ${pushResult.error}`);
+      return new ToolResult(false, null, `Commit feito, mas push falhou: ${pushResult.error}`, { immediateReply: true });
     }
 
-    return ToolResult.ok({
+    return new ToolResult(true, {
       mensagem: `Commit e push realizados com sucesso: ${mensagem || 'Commit automatico'}`,
       detalhes: pushResult.data?.detalhes || '',
-    });
+    }, null, { immediateReply: true });
   } catch (error) {
     return ToolResult.fail(`Erro no git commit and sync: ${error.message}`);
   }

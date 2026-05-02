@@ -74,10 +74,21 @@ async function processToolLoop(sock, sender, msg) {
     const result = await executeToolCall({ tool: toolCall.tool, params: toolCall.params || {}, skipConfirmation: true });
     console.log('[LOOP] Resultado da ferramenta: success=' + result.success + ' error=' + (result.error || 'none'));
 
+    if (result.metadata && result.metadata.immediateReply) {
+      const reply = result.success
+        ? `✅ ${result.data?.mensagem || 'Operacao concluida.'}`
+        : `❌ ${result.error || 'Erro desconhecido.'}`;
+      await salvarMensagem('assistant', reply);
+      if (sock && typeof sock.sendMessage === 'function') {
+        await sock.sendMessage(sender, { text: reply });
+      }
+      return;
+    }
+
     if (result.success) {
       const toolResultMsg = formatToolResult(toolCall.tool, result);
       await salvarMensagem('system', toolResultMsg);
-      const promptPayload = await buildPrompt('[Gere uma resposta natural para o usuario informando o resultado da ferramenta acima. Nao chame ferramentas.]');
+      const promptPayload = await buildPrompt('[RESPONDA APENAS COM "acao":null. Nao chame nenhuma ferramenta. Informe o usuario sobre o resultado acima.]');
       const respostaBruta = await llmClient(promptPayload);
       if (typeof respostaBruta === 'string') {
         const parsed = parseAndValidate(respostaBruta);
@@ -160,21 +171,23 @@ async function processTextMessage(sock, sender, text, msg) {
     if (toolCall) {
       console.log('[PROCESS_TEXT] Acao detectada:', toolCall.tool);
 
-      if (toolCall.tool === 'reiniciarAgente') {
-        await salvarMensagem('assistant', 'Reiniciando o agente...');
-        const result = await executeToolCall({ tool: 'reiniciarAgente', params: {}, skipConfirmation: true });
-        if (sock && typeof sock.sendMessage === 'function') {
-          await sock.sendMessage(sender, { text: result.success ? '🔄 Reiniciando...' : `Falha: ${result.error}` });
-        }
-        return;
-      }
-
       const result = await executeToolCall({ tool: toolCall.tool, params: toolCall.params || {} });
 
       if (result.metadata && result.metadata.requiresConfirmation) {
         await dbAdapter.salvarPendingAction(sender, toolCall.tool, result.metadata.toolCallRequest.params);
         if (sock && typeof sock.sendMessage === 'function') {
           await sock.sendMessage(sender, { text: `Preciso de permissao para: ${toolCall.tool}. Confirma? (sim/nao)` });
+        }
+        return;
+      }
+
+      if (result.metadata && result.metadata.immediateReply) {
+        const reply = result.success
+          ? `✅ ${result.data?.mensagem || 'Operacao concluida.'}`
+          : `❌ ${result.error || 'Erro desconhecido.'}`;
+        await salvarMensagem('assistant', reply);
+        if (sock && typeof sock.sendMessage === 'function') {
+          await sock.sendMessage(sender, { text: reply });
         }
         return;
       }

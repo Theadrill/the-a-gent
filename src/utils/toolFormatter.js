@@ -29,6 +29,9 @@ function formatToolResult(toolName, result) {
     output += `Diretorio criado: ${result.data.caminho}`;
   } else if (toolName === 'removerArquivo' && result.data) {
     output += `Arquivo removido: ${result.data.caminho}`;
+  } else if (toolName === 'gitCommitAndSync' && result.data) {
+    output += `${result.data.mensagem}`;
+    if (result.data.detalhes) output += `\nDetalhes: ${result.data.detalhes}`;
   }
 
   return output;
