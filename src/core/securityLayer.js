@@ -124,10 +124,6 @@ async function validateAction(toolName, params) {
       Object.assign(params, pathResult.sanitized);
     }
 
-    if (['gitCommit', 'gitPush', 'gitAdd'].includes(toolName) && config.seguranca.confirmacao_ativa !== false) {
-      return { status: 'requires_confirmation', reason: `Acao requer confirmacao: ${toolName}`, sanitizedParams: params };
-    }
-
     if (toolName === 'executarComando') {
       const comando = String(params.comando || '').toLowerCase().trim();
       const readOnlyCommands = ['node', 'git', 'npm', 'npx', 'python', 'deno', 'bun', 'cat', 'head', 'tail', 'which', 'where', 'pwd', 'ls'];

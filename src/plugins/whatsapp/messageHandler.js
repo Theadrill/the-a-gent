@@ -1,5 +1,27 @@
 const { routeMedia } = require('../../orchestrator/mediaRouter');
 const config = require('../../../config.json');
+require('dotenv').config();
+
+const IA_NUMBER = process.env.IA_NUMBER || null;
+
+function isIaChat(remoteJid) {
+  if (!remoteJid) return true;
+  if (!IA_NUMBER) return true;
+
+  const jidBase = remoteJid.split(':')[0].split('@')[0];
+
+  if (jidBase === IA_NUMBER) return true;
+
+  if (remoteJid.endsWith('@lid')) {
+    const sock = global.__whatsapp_active_socket;
+    if (sock && sock.user && sock.user.lid) {
+      const lidBase = sock.user.lid.split(':')[0].split('@')[0];
+      if (jidBase === lidBase) return true;
+    }
+  }
+
+  return false;
+}
 
 const rawWhitelist = Array.isArray(config?.seguranca?.whitelist_contatos) ? config.seguranca.whitelist_contatos : [];
 const whitelist = rawWhitelist.map(j => j.split(':')[0]);
@@ -10,11 +32,8 @@ function isAuthorized(jid, msg) {
   if (whitelist.includes(jidBase)) return true;
   const participant = msg?.key?.participant ? String(msg.key.participant).split(':')[0] : null;
   if (participant && whitelist.includes(participant)) return true;
-  if (msg?.key?.fromMe && jid.endsWith('@lid')) {
-    const meStr = msg?.key?.remoteJid || '';
-    if (meStr.endsWith('@lid')) return true;
-  }
-  console.log('[MESSAGE_HANDLER] msg rejeitada', JSON.stringify(msg, (k, v) => k === 'message' && v ? '[MESSAGE]' : v));
+  if (msg?.key?.fromMe && jid.endsWith('@lid')) return true;
+  console.log('[MESSAGE_HANDLER] msg rejeitada pelo isAuthorized', JSON.stringify(msg, (k, v) => k === 'message' && v ? '[MESSAGE]' : v));
   return false;
 }
 
@@ -43,7 +62,9 @@ async function handleMessage(sock, messages, type, processTextMessage) {
           continue;
         }
         const jid = String(msg.key?.remoteJid || '');
+        console.log('[MESSAGE_HANDLER] Msg jid=' + jid + ' fromMe=' + msg.key?.fromMe + ' isIaChat=' + isIaChat(jid));
         if (jid.endsWith('@g.us') || jid === 'status@broadcast') continue;
+        if (!isIaChat(jid)) continue;
         if (!isAuthorized(jid, msg)) continue;
         if (!msg.message) continue;
 
@@ -62,7 +83,10 @@ async function handleMessage(sock, messages, type, processTextMessage) {
           null;
 
         if (text === null) {
-          if (typeof routeMedia === 'function') {
+          if (msgContent.protocolMessage) continue;
+          const knownMediaKeys = ['imageMessage', 'audioMessage', 'videoMessage', 'documentMessage', 'stickerMessage'];
+          const hasMedia = knownMediaKeys.some(k => k in msgContent);
+          if (hasMedia && typeof routeMedia === 'function') {
             await routeMedia(sock, sender, msgContent, msg, processTextMessage);
           }
         } else {

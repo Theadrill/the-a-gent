@@ -78,4 +78,33 @@ async function gitStatus() {
   }
 }
 
-module.exports = { gitInit, gitAdd, gitCommit, gitPush, gitStatus };
+async function gitCommitAndSync(mensagem) {
+  try {
+    const addResult = await gitAdd([]);
+    if (!addResult.success) {
+      return addResult;
+    }
+
+    const commitResult = await gitCommit(mensagem || 'Commit automatico');
+    if (!commitResult.success) {
+      if (commitResult.error && commitResult.error.includes('nothing to commit')) {
+        return ToolResult.fail('Nada para commitar. Nao ha alteracoes no repositorio.');
+      }
+      return commitResult;
+    }
+
+    const pushResult = await gitPush();
+    if (!pushResult.success) {
+      return ToolResult.fail(`Commit feito, mas push falhou: ${pushResult.error}`);
+    }
+
+    return ToolResult.ok({
+      mensagem: `Commit e push realizados com sucesso: ${mensagem || 'Commit automatico'}`,
+      detalhes: pushResult.data?.detalhes || '',
+    });
+  } catch (error) {
+    return ToolResult.fail(`Erro no git commit and sync: ${error.message}`);
+  }
+}
+
+module.exports = { gitInit, gitAdd, gitCommit, gitPush, gitStatus, gitCommitAndSync };

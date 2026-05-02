@@ -1,0 +1,5 @@
+Melhorar fluxo de git commit e git push (está ficando embolado)
+
+Adicionar mensagens intermediárias de etapas, como enquanto faz uma edição, etc.
+
+Limitar a quantidade de caracteres do arquivo criado exibidos na mensagem de confirmação

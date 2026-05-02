@@ -8,7 +8,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-      "baileys": "6.7.16",
+    "baileys": "6.7.16",
     "dotenv": "^16.1.4",
     "pino": "^10.3.1",
     "qrcode-terminal": "^0.12.0",

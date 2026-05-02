@@ -1,7 +1,7 @@
 const { validateAction } = require('../core/securityLayer');
 const { lerArquivo, escreverArquivo, listarDiretorio, criarDiretorio, removerArquivo } = require('./fileSystem');
 const { executarComando } = require('./osCommands');
-const { gitInit, gitAdd, gitCommit, gitPush, gitStatus } = require('./gitCommands');
+const { gitInit, gitAdd, gitCommit, gitPush, gitStatus, gitCommitAndSync } = require('./gitCommands');
 const { reiniciarAgente } = require('./systemCommands');
 const { ToolResult } = require('../utils/ToolResult');
 
@@ -15,8 +15,9 @@ const toolAlias = {
   listar_pasta: 'listarDiretorio',
   ler_arquivo: 'lerArquivo',
   executar: 'executarComando',
-  git_commit: 'gitCommit',
-  git_push: 'gitPush',
+  git_commit: 'gitCommitAndSync',
+  git_push: 'gitCommitAndSync',
+  git_sync: 'gitCommitAndSync',
   git_status: 'gitStatus',
   git_add: 'gitAdd',
   git_init: 'gitInit',
@@ -34,6 +35,7 @@ const toolMap = {
   gitCommit,
   gitPush,
   gitStatus,
+  gitCommitAndSync,
   reiniciarAgente,
 };
 
