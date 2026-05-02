@@ -81,14 +81,21 @@ async function gitStatus() {
 async function gitCommitAndSync(mensagem) {
   try {
     const addResult = await gitAdd([]);
-    if (!addResult.success) {
+    if (!addResult.success && !addResult.error.includes('nothing added')) {
       return addResult;
     }
 
-    const commitResult = await gitCommit(mensagem || 'Commit automatico');
+    let commitResult = await gitCommit(mensagem || 'Commit automatico');
     if (!commitResult.success) {
       if (commitResult.error && commitResult.error.includes('nothing to commit')) {
-        return ToolResult.fail('Nada para commitar. Nao ha alteracoes no repositorio.');
+        const pushResult = await gitPush();
+        if (!pushResult.success) {
+          return ToolResult.fail(`Nada para commitar. Push: ${pushResult.error}`);
+        }
+        return ToolResult.ok({
+          mensagem: 'Nada novo para commitar. Push realizado.',
+          detalhes: pushResult.data?.detalhes || '',
+        });
       }
       return commitResult;
     }
