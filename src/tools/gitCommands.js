@@ -1,4 +1,4 @@
-const { execFile } = require('child_process');
+const { execFile, exec } = require('child_process');
 const path = require('path');
 const { ToolResult } = require('../utils/ToolResult');
 
@@ -39,7 +39,7 @@ async function gitCommit(mensagem) {
       return ToolResult.fail('Mensagem de commit obrigatoria');
     }
     await new Promise((resolve, reject) => {
-      execFile('git', ['commit', '-m', mensagem], { cwd: REPO_DIR, timeout: 15000 }, (err, stdout, stderr) => {
+      exec(`git commit -m "${mensagem.replace(/"/g, '\\"')}"`, { cwd: REPO_DIR, timeout: 15000 }, (err, stdout, stderr) => {
         if (err) reject(new Error(stderr || err.message));
         else resolve(stdout);
       });
