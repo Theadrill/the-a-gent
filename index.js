@@ -85,24 +85,25 @@ async function processToolLoop(sock, sender, msg) {
       return;
     }
 
-    if (result.success) {
-      const toolResultMsg = formatToolResult(toolCall.tool, result);
-      await salvarMensagem('system', toolResultMsg);
-      const promptPayload = await buildPrompt('[RESPONDA APENAS COM "acao":null. Nao chame nenhuma ferramenta. Informe o usuario sobre o resultado acima.]');
-      const respostaBruta = await llmClient(promptPayload);
-      if (typeof respostaBruta === 'string') {
-        const parsed = parseAndValidate(respostaBruta);
-        const reply = parsed?.data?.resposta || toolResultMsg;
-        await salvarMensagem('assistant', reply);
-        if (sock && typeof sock.sendMessage === 'function') {
-          await sock.sendMessage(sender, { text: reply });
-        }
+    const toolResultMsg = formatToolResult(toolCall.tool, result);
+    await salvarMensagem('system', toolResultMsg);
+
+    if (!result.success) {
+      console.log('[LOOP] Ferramenta falhou, encerrando loop');
+      const failReply = result.error?.message || 'Erro desconhecido.';
+      await salvarMensagem('assistant', failReply);
+      if (sock && typeof sock.sendMessage === 'function') {
+        await sock.sendMessage(sender, { text: `❌ ${failReply}` });
       }
       return;
     }
 
-    const formatted = formatToolResult(toolCall.tool, result);
-    await salvarMensagem('system', formatted);
+    console.log('[LOOP] Ferramenta executada com sucesso, encerrando loop');
+    await salvarMensagem('assistant', toolResultMsg);
+    if (sock && typeof sock.sendMessage === 'function') {
+      await sock.sendMessage(sender, { text: toolResultMsg.replace(/^\[FERRAMENTA:.*?\]\n/, '').slice(0, 2000) });
+    }
+    return;
   }
 
   console.log('[LOOP] Maximo de iteracoes atingido');
