@@ -71,13 +71,13 @@ async function processToolLoop(sock, sender, msg) {
     }
 
     console.log('[LOOP] Chamando ferramenta:', toolCall.tool);
-    const result = await executeToolCall({ tool: toolCall.tool, params: toolCall.params || {}, skipConfirmation: true });
-    console.log('[LOOP] Resultado da ferramenta: success=' + result.success + ' error=' + (result.error || 'none'));
+    const result = await executeToolCall(sender, { tool: toolCall.tool, params: toolCall.params || {}, skipConfirmation: true });
+    console.log('[LOOP] Resultado da ferramenta: success=' + result.success + ' error=' + (result.error?.message || 'none'));
 
     if (result.metadata && result.metadata.immediateReply) {
       const reply = result.success
         ? `✅ ${result.data?.mensagem || 'Operacao concluida.'}`
-        : `❌ ${result.error || 'Erro desconhecido.'}`;
+        : `❌ ${result.error?.message || 'Erro desconhecido.'}`;
       await salvarMensagem('assistant', reply);
       if (sock && typeof sock.sendMessage === 'function') {
         await sock.sendMessage(sender, { text: reply });
@@ -131,7 +131,7 @@ async function processTextMessage(sock, sender, text, msg) {
     const pendingAction = await dbAdapter.buscarPendingAction(sender);
     if (pendingAction && /^(sim|s|yes|confirmar)$/i.test(text.trim())) {
       console.log('[PROCESS_TEXT] Confirmacao recebida para:', pendingAction.tool);
-      const result = await executeToolCall({ tool: pendingAction.tool, params: pendingAction.params });
+      const result = await executeToolCall(sender, { tool: pendingAction.tool, params: pendingAction.params, skipConfirmation: true });
       await dbAdapter.removerPendingAction(pendingAction.id);
 
       const formatted = formatToolResult(pendingAction.tool, result);
@@ -171,7 +171,7 @@ async function processTextMessage(sock, sender, text, msg) {
     if (toolCall) {
       console.log('[PROCESS_TEXT] Acao detectada:', toolCall.tool);
 
-      const result = await executeToolCall({ tool: toolCall.tool, params: toolCall.params || {} });
+      const result = await executeToolCall(sender, { tool: toolCall.tool, params: toolCall.params || {} });
 
       if (result.metadata && result.metadata.requiresConfirmation) {
         await dbAdapter.salvarPendingAction(sender, toolCall.tool, result.metadata.toolCallRequest.params);
@@ -184,7 +184,7 @@ async function processTextMessage(sock, sender, text, msg) {
       if (result.metadata && result.metadata.immediateReply) {
         const reply = result.success
           ? `✅ ${result.data?.mensagem || 'Operacao concluida.'}`
-          : `❌ ${result.error || 'Erro desconhecido.'}`;
+          : `❌ ${result.error?.message || 'Erro desconhecido.'}`;
         await salvarMensagem('assistant', reply);
         if (sock && typeof sock.sendMessage === 'function') {
           await sock.sendMessage(sender, { text: reply });

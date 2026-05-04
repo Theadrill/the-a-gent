@@ -1,127 +1,61 @@
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-const config = require('../../config.json');
-const { ToolResult } = require('../utils/ToolResult');
-
-const isWin = os.platform() === 'win32';
-const workdir = path.resolve(config.seguranca.workdir || process.cwd());
-
-function toctouValidate(caminho) {
-  try {
-    let real;
-    try {
-      real = fs.realpathSync(caminho, { throwIfNoEntry: false });
-    } catch (e) {
-      if (e.code === 'ENOENT') {
-        return { valid: true, reason: null };
-      }
-      throw e;
-    }
-    if (real !== null && real !== undefined) {
-      if (!real.startsWith(workdir)) {
-        return { valid: false, reason: 'TOCTOU: caminho real do arquivo mudou e agora esta fora do workdir' };
-      }
-    }
-
-    if (isWin) {
-      try {
-        const fd = fs.openSync(caminho, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
-        fs.closeSync(fd);
-      } catch (openErr) {
-        if (openErr.code === 'ELOOP') {
-          return { valid: false, reason: 'TOCTOU: arquivo foi substituido por um symlink' };
-        }
-        if (openErr.code === 'ENOENT') {
-          return { valid: true, reason: null };
-        }
-      }
-    }
-
-    return { valid: true, reason: null };
-  } catch (e) {
-    return { valid: false, reason: `TOCTOU: erro ao validar caminho: ${e.message}` };
-  }
-}
+const ToolResult = require('../core/toolResult');
 
 async function lerArquivo(caminho) {
   try {
-    if (typeof caminho !== 'string') {
-      return ToolResult.fail('caminho deve ser uma string');
+    if (typeof caminho !== 'string' || caminho.trim() === '') {
+      return ToolResult.error('INVALID_PATH', 'caminho deve ser uma string nao vazia');
     }
-
-    const toctou = toctouValidate(caminho);
-    if (!toctou.valid) {
-      return ToolResult.fail(toctou.reason);
-    }
-
     const conteudo = fs.readFileSync(caminho, 'utf-8');
-    return ToolResult.ok({ conteudo, caminho, tamanho: conteudo.length });
+    return ToolResult.success({ conteudo, caminho, tamanho: conteudo.length });
   } catch (error) {
     if (error.code === 'ENOENT') {
-      return ToolResult.fail('Arquivo nao encontrado');
+      return ToolResult.error('NOT_FOUND', 'Arquivo nao encontrado', error.code);
     }
     if (error.code === 'EACCES') {
-      return ToolResult.fail('Permissao negada para ler o arquivo');
+      return ToolResult.error('PERMISSION_DENIED', 'Permissao negada para ler o arquivo', error.code);
     }
-    return ToolResult.fail(`Erro ao ler arquivo: ${error.message}`);
+    return ToolResult.error('READ_ERROR', `Erro ao ler arquivo: ${error.message}`, error.code);
   }
 }
 
 async function escreverArquivo(caminho, conteudo) {
+  const tmpPath = `${caminho}.tmp.${Date.now()}`;
   try {
-    if (typeof caminho !== 'string') {
-      return ToolResult.fail('caminho deve ser uma string');
+    if (typeof caminho !== 'string' || caminho.trim() === '') {
+      return ToolResult.error('INVALID_PATH', 'caminho deve ser uma string nao vazia');
     }
     if (typeof conteudo !== 'string') {
-      return ToolResult.fail('conteudo deve ser uma string');
-    }
-
-    const toctou = toctouValidate(caminho);
-    if (!toctou.valid) {
-      return ToolResult.fail(toctou.reason);
+      return ToolResult.error('INVALID_CONTENT', 'conteudo deve ser uma string');
     }
 
     const dir = path.dirname(caminho);
-    fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
 
-    const tmpPath = caminho + '.tmp.' + Date.now();
     fs.writeFileSync(tmpPath, conteudo, 'utf-8');
     fs.renameSync(tmpPath, caminho);
 
-    return ToolResult.ok({ caminho, tamanho: Buffer.byteLength(conteudo, 'utf-8') });
+    return ToolResult.success({ caminho, tamanho: Buffer.byteLength(conteudo, 'utf-8') });
   } catch (error) {
     if (error.code === 'EACCES') {
-      return ToolResult.fail('Permissao negada para escrever o arquivo');
+      return ToolResult.error('PERMISSION_DENIED', 'Permissao negada para escrever o arquivo', error.code);
     }
-    return ToolResult.fail(`Erro ao escrever arquivo: ${error.message}`);
+    return ToolResult.error('WRITE_ERROR', `Erro ao escrever arquivo: ${error.message}`, error.code);
   } finally {
     try {
-      const tmpPath = caminho + '.tmp.';
-      const dir = path.dirname(caminho);
-      if (fs.existsSync(dir)) {
-        const files = fs.readdirSync(dir);
-        for (const f of files) {
-          if (f.startsWith('.tmp.') && f.endsWith('.tmp')) {
-            fs.unlinkSync(path.join(dir, f));
-          }
-        }
-      }
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
     } catch (e) {}
   }
 }
 
 async function listarDiretorio(caminho) {
   try {
-    if (typeof caminho !== 'string') {
-      return ToolResult.fail('caminho deve ser uma string');
+    if (typeof caminho !== 'string' || caminho.trim() === '') {
+      return ToolResult.error('INVALID_PATH', 'caminho deve ser uma string nao vazia');
     }
-
-    const toctou = toctouValidate(caminho);
-    if (!toctou.valid) {
-      return ToolResult.fail(toctou.reason);
-    }
-
     const entries = fs.readdirSync(caminho, { withFileTypes: true });
     const data = entries.map(dirent => {
       const fullPath = path.join(caminho, dirent.name);
@@ -138,62 +72,48 @@ async function listarDiretorio(caminho) {
         modificadoEm: stat.mtime,
       };
     });
-
-    return ToolResult.ok(data);
+    return ToolResult.success(data);
   } catch (error) {
     if (error.code === 'ENOENT') {
-      return ToolResult.fail('Diretorio nao encontrado');
+      return ToolResult.error('NOT_FOUND', 'Diretorio nao encontrado', error.code);
     }
     if (error.code === 'EACCES') {
-      return ToolResult.fail('Permissao negada para listar o diretorio');
+      return ToolResult.error('PERMISSION_DENIED', 'Permissao negada para listar o diretorio', error.code);
     }
-    return ToolResult.fail(`Erro ao listar diretorio: ${error.message}`);
+    return ToolResult.error('LIST_ERROR', `Erro ao listar diretorio: ${error.message}`, error.code);
   }
 }
 
 async function criarDiretorio(caminho) {
   try {
-    if (typeof caminho !== 'string') {
-      return ToolResult.fail('caminho deve ser uma string');
+    if (typeof caminho !== 'string' || caminho.trim() === '') {
+      return ToolResult.error('INVALID_PATH', 'caminho deve ser uma string nao vazia');
     }
-
-    const toctou = toctouValidate(caminho);
-    if (!toctou.valid) {
-      return ToolResult.fail(toctou.reason);
-    }
-
     fs.mkdirSync(caminho, { recursive: true });
-    return ToolResult.ok({ caminho });
+    return ToolResult.success({ caminho });
   } catch (error) {
     if (error.code === 'EACCES') {
-      return ToolResult.fail('Permissao negada para criar diretorio');
+      return ToolResult.error('PERMISSION_DENIED', 'Permissao negada para criar diretorio', error.code);
     }
-    return ToolResult.fail(`Erro ao criar diretorio: ${error.message}`);
+    return ToolResult.error('MKDIR_ERROR', `Erro ao criar diretorio: ${error.message}`, error.code);
   }
 }
 
 async function removerArquivo(caminho) {
   try {
-    if (typeof caminho !== 'string') {
-      return ToolResult.fail('caminho deve ser uma string');
+    if (typeof caminho !== 'string' || caminho.trim() === '') {
+      return ToolResult.error('INVALID_PATH', 'caminho deve ser uma string nao vazia');
     }
-
-    const toctou = toctouValidate(caminho);
-    if (!toctou.valid) {
-      return ToolResult.fail(toctou.reason);
-    }
-
     if (!fs.existsSync(caminho)) {
-      return ToolResult.fail('Arquivo nao encontrado');
+      return ToolResult.error('NOT_FOUND', 'Arquivo nao encontrado');
     }
-
     fs.unlinkSync(caminho);
-    return ToolResult.ok({ caminho, removido: true });
+    return ToolResult.success({ caminho, removido: true });
   } catch (error) {
     if (error.code === 'EACCES') {
-      return ToolResult.fail('Permissao negada para remover arquivo');
+      return ToolResult.error('PERMISSION_DENIED', 'Permissao negada para remover arquivo', error.code);
     }
-    return ToolResult.fail(`Erro ao remover arquivo: ${error.message}`);
+    return ToolResult.error('DELETE_ERROR', `Erro ao remover arquivo: ${error.message}`, error.code);
   }
 }
 

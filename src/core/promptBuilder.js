@@ -7,8 +7,13 @@ const IS_WIN = PLATFORM === 'win32';
 
 const PLATFORM_HINT = IS_WIN ? 'Windows. Use .exe (node.exe). Caminhos: \\' : 'Linux/macOS. Caminhos: /';
 
+const ACCESS_LEVEL = config.seguranca?.limitar_acesso === false 
+  ? "FULL ACCESS (Voce tem permissao para acessar QUALQUER pasta/arquivo do computador)" 
+  : `LIMITADO (Voce so pode acessar arquivos dentro da pasta: ${config.seguranca?.workdir || './'})`;
+
 const SYSTEM_PROMPT = `Voce e o The A-gent, assistente de automacao.
 SO: ${PLATFORM_HINT}.
+Nivel de Acesso: ${ACCESS_LEVEL}.
 
 FERRAMENTAS:
 - escreverArquivo(caminho, conteudo) - Cria ou sobrescreve arquivo
@@ -38,7 +43,7 @@ REGRAS:
 10. Responda em portugues. Conteudo de arquivos tambem deve estar em portugues do Brasil.
 11. IMPORTANTE: Se uma ferramenta foi executada com sucesso, voce recebera o resultado no formato FERRAMENTA: .... Use esse resultado para gerar uma resposta NATURAL ao usuario informando o que aconteceu. Nao repita o formato tecnico.
 12. NAO use "executarComando" para escrever, ler ou manipular arquivos. Use "escreverArquivo" ou "lerArquivo" para isso.
-13. NAO use "executarComando" com node -e para rodar codigo. Use as ferramentas de arquivo diretamente.
+13. NAO use "executarComando" with node -e para rodar codigo. Use as ferramentas de arquivo diretamente.
 14. Para git: se o usuario pedir "commit" use "gitCommit". Se pedir "commit e sync/push" use "gitCommitAndSync" que faz tudo de uma vez.
 
 Regras importantes:

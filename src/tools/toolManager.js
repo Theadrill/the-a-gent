@@ -1,9 +1,9 @@
-const { validateAction } = require('../core/securityLayer');
+const { validateAction } = require('../core/securityEnforcer');
 const { lerArquivo, escreverArquivo, listarDiretorio, criarDiretorio, removerArquivo } = require('./fileSystem');
 const { executarComando } = require('./osCommands');
 const { gitInit, gitAdd, gitCommit, gitPush, gitStatus, gitCommitAndSync } = require('./gitCommands');
 const { reiniciarAgente } = require('./systemCommands');
-const { ToolResult } = require('../utils/ToolResult');
+const ToolResult = require('../core/toolResult');
 
 const toolAlias = {
   criar_arquivo: 'escreverArquivo',
@@ -44,10 +44,10 @@ const CONFIRMATION_TOOLS = [
   'instalarPacote', 'executarComando',
 ];
 
-async function executeToolCall(toolCallRequest) {
+async function executeToolCall(sender, toolCallRequest) {
   try {
     if (!toolCallRequest || typeof toolCallRequest !== 'object') {
-      return ToolResult.fail('toolCallRequest invalido');
+      return ToolResult.error('INVALID_REQUEST', 'toolCallRequest invalido');
     }
 
     let tool = toolCallRequest.tool;
@@ -55,27 +55,37 @@ async function executeToolCall(toolCallRequest) {
     const skipConfirmation = toolCallRequest.skipConfirmation === true;
 
     if (!tool || typeof tool !== 'string') {
-      return ToolResult.fail('tool ausente ou invalido em toolCallRequest');
+      return ToolResult.error('MISSING_TOOL', 'tool ausente ou invalido');
     }
 
     tool = toolAlias[tool] || tool;
 
-    const validation = await validateAction(tool, params);
+    // A camada de segurança agora recebe o sender para persistir ações no SQLite
+    const validation = await validateAction(sender, tool, params);
 
     if (validation.status === 'blocked') {
-      return ToolResult.fail(`Acao bloqueada: ${validation.reason}`);
+      return ToolResult.error('SECURITY_BLOCK', `Acao bloqueada: ${validation.reason}`);
     }
 
     if (validation.status === 'requires_confirmation' && !skipConfirmation) {
-      return new ToolResult(false, null, `Acao requer confirmacao: ${validation.reason}`, {
-        requiresConfirmation: true,
-        toolCallRequest: { tool, params: validation.sanitizedParams || params },
+      return new ToolResult({
+        success: false,
+        data: null,
+        error: {
+          code: 'REQUIRES_CONFIRMATION',
+          message: validation.reason
+        },
+        metadata: {
+          requiresConfirmation: true,
+          toolCallRequest: { tool, params: validation.sanitizedParams || params },
+          sender
+        }
       });
     }
 
     const toolFn = toolMap[tool];
     if (!toolFn) {
-      return ToolResult.fail(`Ferramenta desconhecida: ${tool}`);
+      return ToolResult.error('UNKNOWN_TOOL', `Ferramenta desconhecida: ${tool}`);
     }
 
     const sanitizedParams = validation.sanitizedParams || params;
@@ -90,7 +100,8 @@ async function executeToolCall(toolCallRequest) {
 
     return result;
   } catch (error) {
-    return ToolResult.fail(`Erro no toolManager: ${error.message}`);
+    console.error('[ToolManager][ERRO]', error);
+    return ToolResult.error('INTERNAL_ERROR', `Erro no toolManager: ${error.message}`);
   }
 }
 

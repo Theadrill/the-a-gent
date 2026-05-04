@@ -1,7 +1,7 @@
 const { execFile, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { ToolResult } = require('../utils/ToolResult');
+const ToolResult = require('../core/toolResult');
 
 const SCRIPT_DIR = path.resolve(process.cwd());
 
@@ -35,9 +35,9 @@ if %errorlevel% neq 0 goto wait
       process.exit(0);
     }, 3000);
 
-    return ToolResult.ok({ mensagem: 'Reiniciando o agente...' });
+    return ToolResult.success({ mensagem: 'Reiniciando o agente...' });
   } catch (error) {
-    return ToolResult.fail(`Erro ao reiniciar: ${error.message}`);
+    return ToolResult.error('RESTART_ERROR', `Erro ao reiniciar: ${error.message}`);
   }
 }
 
