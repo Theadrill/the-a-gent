@@ -33,8 +33,14 @@ function formatToolResult(toolName, result) {
       break;
 
     case 'listarDiretorio':
-      if (Array.isArray(data)) {
+      if (data.entradas && Array.isArray(data.entradas)) {
+        output += `Diretório: ${data.caminho || 'atual'}\n`;
+        output += data.entradas.map(e => `  ${e.tipo === 'diretorio' ? '[DIR]' : '[FILE]'} ${e.nome}`).join('\n');
+        output += '\n\n[DICA PARA IA: Apresente esta lista de forma organizada e elegante para o usuário, usando emojis e separando diretórios de arquivos.]';
+      } else if (Array.isArray(data)) {
+        // Fallback para versão antiga
         output += data.map(e => `  ${e.tipo === 'diretorio' ? '[DIR]' : '[FILE]'} ${e.nome}`).join('\n');
+        output += '\n\n[DICA PARA IA: Apresente esta lista de forma organizada e elegante para o usuário, usando emojis e separando diretórios de arquivos.]';
       } else {
         output += 'Diretório vazio ou sem conteúdo listável.';
       }

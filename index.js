@@ -50,7 +50,7 @@ async function processToolLoop(sock, sender, msg) {
     sock = (typeof getActiveSocket === 'function' ? getActiveSocket() : null) || sock;
 
     const historico = await buscarUltimasMensagens(MAX_BUFFER);
-    const promptPayload = await buildPrompt('[Continuacao automatica]', historico);
+    const promptPayload = await buildPrompt('[SISTEMA] Ação concluída. Prossiga com o objetivo do usuário ou apresente os resultados finais.', historico);
     const respostaBruta = await llmClient(promptPayload);
 
     if (typeof respostaBruta !== 'string') {

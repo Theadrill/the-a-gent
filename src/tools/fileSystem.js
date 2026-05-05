@@ -51,14 +51,12 @@ async function escreverArquivo(caminho, conteudo) {
   }
 }
 
-async function listarDiretorio(caminho) {
+async function listarDiretorio(caminho = '.') {
   try {
-    if (typeof caminho !== 'string' || caminho.trim() === '') {
-      return ToolResult.error('INVALID_PATH', 'caminho deve ser uma string nao vazia');
-    }
-    const entries = fs.readdirSync(caminho, { withFileTypes: true });
+    const targetPath = (typeof caminho === 'string' && caminho.trim() !== '') ? caminho : '.';
+    const entries = fs.readdirSync(targetPath, { withFileTypes: true });
     const data = entries.map(dirent => {
-      const fullPath = path.join(caminho, dirent.name);
+      const fullPath = path.join(targetPath, dirent.name);
       let stat;
       try {
         stat = fs.statSync(fullPath);
@@ -72,7 +70,7 @@ async function listarDiretorio(caminho) {
         modificadoEm: stat.mtime,
       };
     });
-    return ToolResult.success(data);
+    return ToolResult.success({ caminho: targetPath, entradas: data });
   } catch (error) {
     if (error.code === 'ENOENT') {
       return ToolResult.error('NOT_FOUND', 'Diretorio nao encontrado', error.code);

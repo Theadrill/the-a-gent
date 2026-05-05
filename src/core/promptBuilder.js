@@ -63,21 +63,22 @@ Regras importantes:
 4. O campo "parametros" deve ser um objeto com os parametros exatos que a ferramenta espera
 5. O campo "final" deve ser true quando a resposta estiver pronta, false se ainda precisa de mais acoes
 6. Nao adicione texto fora do JSON
-7. Se nao tiver certeza, use acao: null e final: true e explique na resposta`;
+7. Se nao tiver certeza, use acao: null e final: true e explique na resposta
+8. ESTILIZACAO: Sempre que mostrar listas de arquivos ou resultados de ferramentas, use uma formatacao visualmente agradavel (Markdown, emojis, listas organizadas) para que o usuario tenha uma otima experiencia visual no WhatsApp.`;
 
 /**
  * Constrói o prompt completo para envio ao LLM, injetando o histórico do SQLite.
  * @param {string} userInput - A entrada do usuário
  * @returns {Promise<string>} - O prompt formatado com instruções e histórico
  */
-async function buildPrompt(userInput) {
+async function buildPrompt(userInput, history = null) {
   const maxBuffer = config.memoria.max_buffer || 15;
   const agora = new Date().toISOString();
 
   let historicoFormatado = '';
 
   try {
-    const historico = await buscarUltimasMensagens(maxBuffer);
+    const historico = history || await buscarUltimasMensagens(maxBuffer);
     historicoFormatado = historico
       .map(msg => `[${new Date(msg.timestamp).toISOString()}] ${msg.role}: ${msg.content}`)
       .join('\n');

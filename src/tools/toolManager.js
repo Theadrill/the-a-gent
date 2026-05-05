@@ -97,7 +97,20 @@ async function executeToolCall(sender, toolCallRequest) {
     let result;
     if (tool === 'executarComando') {
       result = await toolFn(sanitizedParams.comando, sanitizedParams.argumentos);
+    } else if (tool === 'escreverArquivo') {
+      result = await toolFn(sanitizedParams.caminho, sanitizedParams.conteudo);
+    } else if (tool === 'lerArquivo' || tool === 'listarDiretorio' || tool === 'criarDiretorio' || tool === 'removerArquivo') {
+      result = await toolFn(sanitizedParams.caminho || sanitizedParams.diretorio);
+    } else if (tool === 'gitAdd') {
+      result = await toolFn(sanitizedParams.arquivos);
+    } else if (tool === 'gitCommit' || tool === 'gitCommitAndSync') {
+      result = await toolFn(sanitizedParams.mensagem);
+    } else if (tool === 'pesquisarWeb') {
+      result = await toolFn(sanitizedParams.query, sanitizedParams.maxResults);
+    } else if (tool === 'buscarPagina') {
+      result = await toolFn(sanitizedParams.url);
     } else {
+      // Fallback para ferramentas simples ou sem parâmetros
       const paramValues = Object.values(sanitizedParams);
       result = await toolFn(...paramValues);
     }
