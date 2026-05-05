@@ -7,6 +7,7 @@ const dbAdapter = require('./dbAdapter');
  * @returns {Promise<object>} - objeto com `id`, `role`, `content`, `timestamp`
  */
 function salvarMensagem(role, content) {
+  if (role === 'system') return Promise.resolve(null);
   return dbAdapter.init().then((db) => {
     return new Promise((resolve, reject) => {
       const timestamp = Date.now();
@@ -28,8 +29,8 @@ function salvarMensagem(role, content) {
 function buscarUltimasMensagens(limite_buffer = 15) {
   return dbAdapter.init().then((db) => {
     return new Promise((resolve, reject) => {
-      const sql = 'SELECT id, role, content, timestamp FROM messages ORDER BY timestamp DESC LIMIT ?';
-      db.all(sql, [limite_buffer], (err, rows) => {
+      const sql = 'SELECT id, role, content, timestamp FROM messages WHERE role IN (?, ?) ORDER BY timestamp DESC LIMIT ?';
+      db.all(sql, ['user', 'assistant', limite_buffer], (err, rows) => {
         if (err) return reject(err);
         // rows vem do mais recente ao mais antigo; inverter para cronológico
         resolve(rows.reverse());

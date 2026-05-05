@@ -26,21 +26,25 @@ const MAX_BUFFER = (() => {
   return Number.isFinite(v) && v > 0 ? v : 20;
 })();
 
-const MAX_TOOL_ITERATIONS = 5;
 const VERBOSE = config.verbose === true;
+const REQUEST_TIMEOUT_MS = (config.max_timeout_seconds || 180) * 1000;
+let stopRequested = false;
 
 console.log('[BOOT] The A-gent iniciando...');
 console.log('[BOOT] Provedor:', config.api.provider, '/ Modelo:', config.api.model);
 console.log('[BOOT] Buffer de memoria:', MAX_BUFFER, 'mensagens');
-console.log('[BOOT] Max iteracoes de ferramenta:', MAX_TOOL_ITERATIONS);
+console.log('[BOOT] Timeout por requisicao:', REQUEST_TIMEOUT_MS / 1000, 's');
+console.log('[BOOT] Verbose:', VERBOSE);
 console.log('[BOOT] Conectando ao WhatsApp...');
 
 async function processToolLoop(sock, sender, msg) {
-  let iterations = 0;
+  const startTime = Date.now();
 
-  while (iterations < MAX_TOOL_ITERATIONS) {
-    iterations++;
-    console.log('[LOOP] Iteracao', iterations, 'de', MAX_TOOL_ITERATIONS);
+  while (Date.now() - startTime < REQUEST_TIMEOUT_MS) {
+    if (stopRequested) {
+      stopRequested = false;
+      return;
+    }
 
     const historico = await buscarUltimasMensagens(MAX_BUFFER);
     const promptPayload = await buildPrompt('[Continuacao automatica]', historico);
@@ -57,11 +61,12 @@ async function processToolLoop(sock, sender, msg) {
 
     const data = parsed.data;
 
+    const isFinal = data.final === true;
     const toolCall = data.tool_call || (data.acao && data.acao !== null
       ? { tool: data.acao, params: data.parametros }
       : null);
 
-    if (!toolCall) {
+    if (isFinal || !toolCall) {
       if (data.resposta) {
         await salvarMensagem('assistant', data.resposta);
         if (sock && typeof sock.sendMessage === 'function') {
@@ -123,15 +128,24 @@ async function processToolLoop(sock, sender, msg) {
     continue;
   }
 
-  console.log('[LOOP] Maximo de iteracoes atingido');
+  console.log('[LOOP] Tempo limite excedido (' + (REQUEST_TIMEOUT_MS / 1000) + 's)');
   if (sock && typeof sock.sendMessage === 'function') {
-    await sock.sendMessage(sender, { text: 'Nao foi possivel concluir a operacao apos varias tentativas. Tente simplificar o comando.' });
+    await sock.sendMessage(sender, { text: '⏱️ O tempo limite foi atingido. Se precisar de mais detalhes, peca para eu continuar de onde parei.' });
   }
 }
 
 async function processTextMessage(sock, sender, text, msg) {
   try {
     console.log('[PROCESS_TEXT] Mensagem recebida de', sender, ':', text ? text.slice(0, 50) : '(midia)');
+
+    if (text && /^pare$/i.test(text.trim())) {
+      stopRequested = true;
+      console.log('[PROCESS_TEXT] Parada solicitada pelo usuario');
+      if (sock && typeof sock.sendMessage === 'function') {
+        await sock.sendMessage(sender, { text: '🛑 Processo interrompido com sucesso, aguardando novas mensagens.' });
+      }
+      return;
+    }
 
     if (msg?.key) {
       if (typeof sock.readMessages === 'function') {

@@ -20,5 +20,6 @@
   "web": {
     "max_extracted_chars": 15000
   },
+  "max_timeout_seconds": 180,
   "verbose": true
 }

@@ -40,28 +40,30 @@ Quando o usuario pedir uma pesquisa ou buscar informacoes:
 4. So responda ao usuario depois de ter as informacoes completas
 
 REGRAS:
-1. Responda em JSON: {"resposta":"texto","acao":null|"ferramenta","parametros":null|objeto}
+1. Responda em JSON: {"resposta":"texto","acao":null|"ferramenta","parametros":null|objeto,"final":true|false}
 2. "acao" = nome exato da ferramenta (escreverArquivo, lerArquivo, etc) ou null
 3. "parametros" = objetos com os campos que a ferramenta espera
-4. Para criar arquivo: acao="escreverArquivo", parametros={"caminho":"arquivo.txt","conteudo":"texto"}
-5. Apos executar ferramenta com sucesso, analise o resultado. Se precisar de mais informacoes ou outra acao, chame outra ferramenta. So responda ao usuario quando tiver a resposta final pronta.
-6. Se ferramenta falhar, informe o erro ao usuario
-7. Nao use shell scripts. Nao invente resultados.
-8. Nao liste diretorio antes de criar arquivo. Crie direto.
-9. Nao peca confirmacao ao usuario. Apenas execute.
-10. Responda em portugues. Conteudo de arquivos tambem deve estar em portugues do Brasil.
-11. IMPORTANTE: Se uma ferramenta foi executada com sucesso, voce recebera o resultado no formato FERRAMENTA: .... Use esse resultado para gerar uma resposta NATURAL ao usuario informando o que aconteceu. Nao repita o formato tecnico.
-12. NAO use "executarComando" para escrever, ler ou manipular arquivos. Use "escreverArquivo" ou "lerArquivo" para isso.
-13. NAO use "executarComando" with node -e para rodar codigo. Use as ferramentas de arquivo diretamente.
-14. Para git: se o usuario pedir "commit" use "gitCommit". Se pedir "commit e sync/push" use "gitCommitAndSync" que faz tudo de uma vez.
+4. "final" = true quando sua resposta estiver pronta para o usuario; false quando ainda estiver processando (chamando ferramentas)
+5. Para criar arquivo: acao="escreverArquivo", parametros={"caminho":"arquivo.txt","conteudo":"texto"}
+6. Apos executar ferramenta com sucesso, analise o resultado. Se precisar de mais informacoes ou outra acao, chame outra ferramenta. So responda ao usuario quando tiver a resposta final pronta (final:true).
+7. Se ferramenta falhar, informe o erro ao usuario
+8. Nao use shell scripts. Nao invente resultados.
+9. Nao liste diretorio antes de criar arquivo. Crie direto.
+10. Nao peca confirmacao ao usuario. Apenas execute.
+11. Responda em portugues. Conteudo de arquivos tambem deve estar em portugues do Brasil.
+12. IMPORTANTE: Se uma ferramenta foi executada com sucesso, voce recebera o resultado no formato FERRAMENTA: .... Use esse resultado para gerar uma resposta NATURAL ao usuario informando o que aconteceu. Nao repita o formato tecnico.
+13. NAO use "executarComando" para escrever, ler ou manipular arquivos. Use "escreverArquivo" ou "lerArquivo" para isso.
+14. NAO use "executarComando" with node -e para rodar codigo. Use as ferramentas de arquivo diretamente.
+15. Para git: se o usuario pedir "commit" use "gitCommit". Se pedir "commit e sync/push" use "gitCommitAndSync" que faz tudo de uma vez.
 
 Regras importantes:
 1. Sempre responda em portugues do Brasil
 2. O campo "resposta" deve conter sua mensagem para o usuario
 3. O campo "acao" deve ser o nome exato da ferramenta (ex: "escreverArquivo") ou null se nao houver acao
 4. O campo "parametros" deve ser um objeto com os parametros exatos que a ferramenta espera
-5. Nao adicione texto fora do JSON
-6. Se nao tiver certeza, use acao: null e explique na resposta`;
+5. O campo "final" deve ser true quando a resposta estiver pronta, false se ainda precisa de mais acoes
+6. Nao adicione texto fora do JSON
+7. Se nao tiver certeza, use acao: null e final: true e explique na resposta`;
 
 /**
  * Constrói o prompt completo para envio ao LLM, injetando o histórico do SQLite.
