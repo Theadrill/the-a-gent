@@ -27,6 +27,7 @@ const MAX_BUFFER = (() => {
 })();
 
 const MAX_TOOL_ITERATIONS = 5;
+const VERBOSE = config.verbose === true;
 
 console.log('[BOOT] The A-gent iniciando...');
 console.log('[BOOT] Provedor:', config.api.provider, '/ Modelo:', config.api.model);
@@ -70,6 +71,17 @@ async function processToolLoop(sock, sender, msg) {
       return;
     }
 
+    if (VERBOSE) {
+      const statusMsg = toolCall.tool === 'pesquisarWeb'
+        ? `🔍 Pesquisando na internet: "${toolCall.params?.query || '...'}"...`
+        : toolCall.tool === 'buscarPagina'
+        ? `📄 Acessando pagina: ${toolCall.params?.url || '...'}...`
+        : `⚙️ Executando ${toolCall.tool}...`;
+      if (sock && typeof sock.sendMessage === 'function') {
+        await sock.sendMessage(sender, { text: statusMsg }).catch(() => {});
+      }
+    }
+
     console.log('[LOOP] Chamando ferramenta:', toolCall.tool);
     const result = await executeToolCall(sender, { tool: toolCall.tool, params: toolCall.params || {}, skipConfirmation: true });
     console.log('[LOOP] Resultado da ferramenta: success=' + result.success + ' error=' + (result.error?.message || 'none'));
@@ -98,12 +110,17 @@ async function processToolLoop(sock, sender, msg) {
       return;
     }
 
-    console.log('[LOOP] Ferramenta executada com sucesso, encerrando loop');
-    await salvarMensagem('assistant', toolResultMsg);
-    if (sock && typeof sock.sendMessage === 'function') {
-      await sock.sendMessage(sender, { text: toolResultMsg.replace(/^\[FERRAMENTA:.*?\]\n/, '').slice(0, 2000) });
+    if (VERBOSE) {
+      const thinkingMsg = toolCall.tool === 'pesquisarWeb' || toolCall.tool === 'buscarPagina'
+        ? '🧠 Gerando sua resposta...'
+        : null;
+      if (thinkingMsg && sock && typeof sock.sendMessage === 'function') {
+        await sock.sendMessage(sender, { text: thinkingMsg }).catch(() => {});
+      }
     }
-    return;
+
+    console.log('[LOOP] Ferramenta executada com sucesso, continuando loop');
+    continue;
   }
 
   console.log('[LOOP] Maximo de iteracoes atingido');
@@ -171,6 +188,17 @@ async function processTextMessage(sock, sender, text, msg) {
 
     if (toolCall) {
       console.log('[PROCESS_TEXT] Acao detectada:', toolCall.tool);
+
+      if (VERBOSE) {
+        const statusMsg = toolCall.tool === 'pesquisarWeb'
+          ? `🔍 Pesquisando na internet: "${toolCall.params?.query || '...'}"...`
+          : toolCall.tool === 'buscarPagina'
+          ? `📄 Acessando pagina: ${toolCall.params?.url || '...'}...`
+          : `⚙️ Executando ${toolCall.tool}...`;
+        if (sock && typeof sock.sendMessage === 'function') {
+          await sock.sendMessage(sender, { text: statusMsg }).catch(() => {});
+        }
+      }
 
       const result = await executeToolCall(sender, { tool: toolCall.tool, params: toolCall.params || {} });
 

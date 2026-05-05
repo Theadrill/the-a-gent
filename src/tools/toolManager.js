@@ -1,8 +1,10 @@
-const { validateAction } = require('../core/securityEnforcer');
+const { validateAction } = require('../core/securityLayer');
 const { lerArquivo, escreverArquivo, listarDiretorio, criarDiretorio, removerArquivo } = require('./fileSystem');
 const { executarComando } = require('./osCommands');
 const { gitInit, gitAdd, gitCommit, gitPush, gitStatus, gitCommitAndSync } = require('./gitCommands');
 const { reiniciarAgente } = require('./systemCommands');
+const webScraper = require('./webScraper');
+const webSearch = require('./webSearch');
 const ToolResult = require('../core/toolResult');
 
 const toolAlias = {
@@ -37,6 +39,8 @@ const toolMap = {
   gitStatus,
   gitCommitAndSync,
   reiniciarAgente,
+  buscarPagina: webScraper.buscarPagina,
+  pesquisarWeb: webSearch.pesquisarWeb,
 };
 
 const CONFIRMATION_TOOLS = [

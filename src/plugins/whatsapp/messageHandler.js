@@ -2,6 +2,13 @@ const { routeMedia } = require('../../orchestrator/mediaRouter');
 const config = require('../../../config.json');
 require('dotenv').config();
 
+const processedIds = new Set();
+const ID_CLEANUP_INTERVAL = 30000;
+
+setInterval(() => {
+  if (processedIds.size > 1000) processedIds.clear();
+}, ID_CLEANUP_INTERVAL);
+
 const IA_NUMBER = process.env.IA_NUMBER || null;
 
 function isIaChat(remoteJid) {
@@ -57,10 +64,11 @@ async function handleMessage(sock, messages, type, processTextMessage) {
         if (!Number.isFinite(messageTimestamp)) continue;
         if (now - messageTimestamp > 60) continue;
 
-        if (!msg.key) {
-          console.log('[MESSAGE_HANDLER] mensagem sem key, pulando');
-          continue;
-        }
+        if (!msg.key) continue;
+        const msgId = msg.key.id;
+        if (msgId && processedIds.has(msgId)) continue;
+        if (msgId) processedIds.add(msgId);
+
         const jid = String(msg.key?.remoteJid || '');
         console.log('[MESSAGE_HANDLER] Msg jid=' + jid + ' fromMe=' + msg.key?.fromMe + ' isIaChat=' + isIaChat(jid));
         if (jid.endsWith('@g.us') || jid === 'status@broadcast') continue;
