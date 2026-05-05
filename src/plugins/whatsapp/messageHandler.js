@@ -39,7 +39,16 @@ function isAuthorized(jid, msg) {
   if (whitelist.includes(jidBase)) return true;
   const participant = msg?.key?.participant ? String(msg.key.participant).split(':')[0] : null;
   if (participant && whitelist.includes(participant)) return true;
-  if (msg?.key?.fromMe && jid.endsWith('@lid')) return true;
+  
+  if (msg?.key?.fromMe && jid.endsWith('@lid')) {
+    const sock = global.__whatsapp_active_socket;
+    if (sock && sock.user && sock.user.lid) {
+      const myLidBase = sock.user.lid.split(':')[0].split('@')[0];
+      const jidBaseLid = jidBase.split('@')[0];
+      if (jidBaseLid === myLidBase) return true;
+    }
+  }
+  
   console.log('[MESSAGE_HANDLER] msg rejeitada pelo isAuthorized', JSON.stringify(msg, (k, v) => k === 'message' && v ? '[MESSAGE]' : v));
   return false;
 }

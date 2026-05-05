@@ -8,7 +8,7 @@
  * SAÍDAS: { success: boolean, data?: { query, resultados: Array<{titulo, url, snippet}> }, error?: string }
  */
 
-const { CheerioCrawler, Configuration, purgeDefaultStorages } = require('crawlee');
+const { PlaywrightCrawler, Configuration, purgeDefaultStorages } = require('crawlee');
 const fs = require('fs');
 const path = require('path');
 const { validateUrl } = require('../core/securityLayer');
@@ -64,27 +64,25 @@ async function pesquisarWeb(query, maxResults = 3) {
   let errorMsg = null;
 
   try {
-    const crawler = new CheerioCrawler({
+    const cheerio = require('cheerio');
+    
+    const crawler = new PlaywrightCrawler({
       minConcurrency: 1,
       maxConcurrency: 1,
-      requestHandlerTimeoutSecs: 20,
-      navigationTimeoutSecs: 10,
+      requestHandlerTimeoutSecs: 30,
+      navigationTimeoutSecs: 15,
       maxRequestRetries: 1,
       maxRequestsPerCrawl: 1,
       
-      additionalMimeTypes: ['text/html'],
+      browserPoolOptions: {
+        useFingerprints: true,
+      },
       
-      preNavigationHooks: [
-        async (_crawlingContext, gotoOptions) => {
-          gotoOptions.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-          };
-        },
-      ],
-      
-      requestHandler: async ({ $ }) => {
+      requestHandler: async ({ page }) => {
+        await page.waitForLoadState('domcontentloaded');
+        const html = await page.content();
+        const $ = cheerio.load(html);
+        
         // Tenta cada seletor de resultado até encontrar resultados
         let results = null;
         for (const selector of RESULT_SELECTORS) {
@@ -95,7 +93,7 @@ async function pesquisarWeb(query, maxResults = 3) {
           }
         }
         
-        if (results.length === 0) {
+        if (!results || results.length === 0) {
           // Verifica se houve bloqueio ou "sem resultados"
           if ($('.no-results').length > 0) {
             errorMsg = 'Nenhum resultado encontrado para esta consulta.';

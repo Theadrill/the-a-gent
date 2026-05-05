@@ -171,5 +171,4 @@ async function initWhatsApp(onMessageReceived, options = {}) {
     return null;
   }
 }
-
-module.exports = { initWhatsApp, socketEmitter };
+module.exports = { initWhatsApp, socketEmitter, getActiveSocket };

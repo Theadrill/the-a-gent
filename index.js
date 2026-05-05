@@ -46,6 +46,9 @@ async function processToolLoop(sock, sender, msg) {
       return;
     }
 
+    const { getActiveSocket } = require('./src/plugins/whatsapp/connection');
+    sock = (typeof getActiveSocket === 'function' ? getActiveSocket() : null) || sock;
+
     const historico = await buscarUltimasMensagens(MAX_BUFFER);
     const promptPayload = await buildPrompt('[Continuacao automatica]', historico);
     const respostaBruta = await llmClient(promptPayload);
@@ -86,6 +89,9 @@ async function processToolLoop(sock, sender, msg) {
         await sock.sendMessage(sender, { text: statusMsg }).catch(() => {});
       }
     }
+
+    const assistantMemory = (data.resposta ? data.resposta + '\n' : '') + JSON.stringify({ acao: toolCall.tool, parametros: toolCall.params || {} });
+    await salvarMensagem('assistant', assistantMemory);
 
     console.log('[LOOP] Chamando ferramenta:', toolCall.tool);
     const result = await executeToolCall(sender, { tool: toolCall.tool, params: toolCall.params || {}, skipConfirmation: true });
@@ -136,6 +142,9 @@ async function processToolLoop(sock, sender, msg) {
 
 async function processTextMessage(sock, sender, text, msg) {
   try {
+    const { getActiveSocket } = require('./src/plugins/whatsapp/connection');
+    sock = (typeof getActiveSocket === 'function' ? getActiveSocket() : null) || sock;
+
     console.log('[PROCESS_TEXT] Mensagem recebida de', sender, ':', text ? text.slice(0, 50) : '(midia)');
 
     if (text && /^pare$/i.test(text.trim())) {
@@ -214,6 +223,9 @@ async function processTextMessage(sock, sender, text, msg) {
         }
       }
 
+      const assistantMemory = (data.resposta ? data.resposta + '\n' : '') + JSON.stringify({ acao: toolCall.tool, parametros: toolCall.params || {} });
+      await salvarMensagem('assistant', assistantMemory);
+
       const result = await executeToolCall(sender, { tool: toolCall.tool, params: toolCall.params || {} });
 
       if (result.metadata && result.metadata.requiresConfirmation) {
@@ -257,7 +269,7 @@ async function processTextMessage(sock, sender, text, msg) {
   }
 }
 
-const { initWhatsApp } = require('./src/plugins/whatsapp/connection');
+const { initWhatsApp, getActiveSocket } = require('./src/plugins/whatsapp/connection');
 const { handleMessage } = require('./src/plugins/whatsapp/messageHandler');
 
 async function onMessageReceived(sock, messages, type) {
