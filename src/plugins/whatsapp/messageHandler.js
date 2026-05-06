@@ -35,20 +35,36 @@ const whitelist = rawWhitelist.map(j => j.split(':')[0]);
 
 function isAuthorized(jid, msg) {
   if (whitelist.length === 0) return true;
+  
+  const sock = global.__whatsapp_active_socket;
+
+  // 1. Verifica se o JID do chat está na whitelist (ex: 5511... @s.whatsapp.net)
   const jidBase = jid.split(':')[0];
   if (whitelist.includes(jidBase)) return true;
+
+  // 2. Verifica se o participante (em grupos ou se houver) está na whitelist
   const participant = msg?.key?.participant ? String(msg.key.participant).split(':')[0] : null;
   if (participant && whitelist.includes(participant)) return true;
   
-  if (msg?.key?.fromMe && jid.endsWith('@lid')) {
-    const sock = global.__whatsapp_active_socket;
-    if (sock && sock.user && sock.user.lid) {
-      const myLidBase = sock.user.lid.split(':')[0].split('@')[0];
-      const jidBaseLid = jidBase.split('@')[0];
-      if (jidBaseLid === myLidBase) return true;
+  // 3. Se a mensagem for enviada por mim (fromMe), só autorizamos se:
+  //    a) Eu estiver falando COMIGO MESMO (chat próprio)
+  //    b) Eu estiver falando com alguém que está na whitelist
+  if (msg?.key?.fromMe && sock?.user) {
+    const myPhoneBase = sock.user.id.split(':')[0].split('@')[0];
+    const myLidBase = sock.user.lid ? sock.user.lid.split(':')[0].split('@')[0] : null;
+    const targetBase = jid.split('@')[0];
+
+    // Verifica se o alvo da conversa sou eu mesmo (por número ou LID)
+    const isTalkingToSelf = (targetBase === myPhoneBase || (myLidBase && targetBase === myLidBase));
+    
+    if (isTalkingToSelf || whitelist.includes(jidBase)) {
+      return true;
     }
+    
+    // Se eu estiver falando com outra pessoa fora da whitelist, o bot ignora e não loga como erro
+    return false;
   }
-  
+
   console.log('[MESSAGE_HANDLER] msg rejeitada pelo isAuthorized', JSON.stringify(msg, (k, v) => k === 'message' && v ? '[MESSAGE]' : v));
   return false;
 }

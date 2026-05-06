@@ -3,7 +3,7 @@
     "provider": "ollama",
     "model": "nemotron-3-super:cloud",
     "fallback_provider": "gemini",
-    "hostname": "localhost",
+    "hostname": "pcrodrigoxeon-1",
     "port": 11434
   },
   "memoria": {
@@ -15,11 +15,13 @@
     "confirmacao_ativa": true,
     "limitar_acesso": false,
     "max_file_size_mb": 2,
-    "whitelist_contatos": ["5511951652448@s.whatsapp.net"]
+    "whitelist_contatos": [
+      "5511951652448@s.whatsapp.net"
+    ]
   },
   "web": {
     "max_extracted_chars": 15000
   },
-  "max_timeout_seconds": 180,
+  "max_timeout_seconds": 6000,
   "verbose": true
 }

@@ -6,6 +6,21 @@ const { reiniciarAgente } = require('./systemCommands');
 const webScraper = require('./webScraper');
 const webSearch = require('./webSearch');
 const ToolResult = require('../core/toolResult');
+const { getActiveSocket } = require('../plugins/whatsapp/connection');
+
+/**
+ * Envia uma notificação rápida para o WhatsApp do usuário
+ */
+async function notifyUser(sender, text) {
+  try {
+    const sock = getActiveSocket();
+    if (sock && sender) {
+      await sock.sendMessage(sender, { text });
+    }
+  } catch (err) {
+    console.error('[ToolManager][Notify] Erro ao enviar notificacao:', err);
+  }
+}
 
 const toolAlias = {
   criar_arquivo: 'escreverArquivo',
@@ -93,6 +108,15 @@ async function executeToolCall(sender, toolCallRequest) {
     }
 
     const sanitizedParams = validation.sanitizedParams || params;
+
+    // Notificações em tempo real para o WhatsApp (Log de passo a passo)
+    if (tool === 'lerArquivo') {
+      await notifyUser(sender, `📖 *Lendo arquivo:* ${sanitizedParams.caminho}`);
+    } else if (tool === 'escreverArquivo') {
+      await notifyUser(sender, `💾 *Salvando arquivo:* ${sanitizedParams.caminho}`);
+    } else if (tool === 'listarDiretorio') {
+      await notifyUser(sender, `📁 *Listando diretório:* ${sanitizedParams.caminho || sanitizedParams.diretorio || '.'}`);
+    }
 
     let result;
     if (tool === 'executarComando') {

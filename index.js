@@ -51,7 +51,7 @@ async function processToolLoop(sock, sender, msg) {
 
     const historico = await buscarUltimasMensagens(MAX_BUFFER);
     const promptPayload = await buildPrompt('[SISTEMA] Ação concluída. Prossiga com o objetivo do usuário ou apresente os resultados finais.', historico);
-    const respostaBruta = await llmClient(promptPayload);
+    const respostaBruta = await llmClient(promptPayload, sender);
 
     if (typeof respostaBruta !== 'string') {
       throw new Error('Resposta do LLM invalida no loop');
@@ -193,7 +193,7 @@ async function processTextMessage(sock, sender, text, msg) {
     await salvarMensagem('user', safeText);
 
     const promptPayload = await buildPrompt(safeText);
-    const respostaBruta = await llmClient(promptPayload);
+    const respostaBruta = await llmClient(promptPayload, sender);
 
     if (typeof respostaBruta !== 'string') throw new Error('Resposta do LLM invalida');
     console.log('[PROCESS_TEXT] Resposta bruta do LLM:', respostaBruta.slice(0, 300));

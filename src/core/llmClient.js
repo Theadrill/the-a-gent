@@ -4,15 +4,29 @@ require('dotenv').config();
 /**
  * Cliente LLM que envia requisições para a API do Ollama (ou fallback)
  * @param {string} prompt - O prompt completo para enviar ao modelo
+ * @param {string} [sender] - (Opcional) JID do remetente para enviar status
  * @returns {Promise<string>} - A resposta bruta do modelo em texto
  */
-async function llmClient(prompt) {
+async function llmClient(prompt, sender) {
   const currentProvider = config.api.provider || 'ollama';
   const hostname = process.env.OLLAMA_HOST || config.api.hostname || 'localhost';
   const port = process.env.OLLAMA_PORT || config.api.port || 11434;
   const model = config.api.model || 'llama3.2';
+  
+  // Usa o timeout do config.json (em segundos) ou default de 120s
+  const timeoutSeconds = config.max_timeout_seconds || 120;
+  const timeoutMs = timeoutSeconds * 1000;
 
   try {
+    // Notificação opcional para o usuário
+    if (sender) {
+      const { getActiveSocket } = require('../plugins/whatsapp/connection');
+      const sock = getActiveSocket();
+      if (sock && typeof sock.sendMessage === 'function') {
+        await sock.sendMessage(sender, { text: '🧠 *Pensando...*' }).catch(() => {});
+      }
+    }
+
     let apiUrl;
     let requestBody;
 
@@ -46,7 +60,7 @@ async function llmClient(prompt) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(120000)
+        signal: AbortSignal.timeout(timeoutMs)
       });
     } catch (fetchErr) {
       console.error(`[LLM][ERRO] Fetch falhou apos ${Date.now() - startTime}ms: ${fetchErr.message}`);
