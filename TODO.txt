@@ -1,0 +1,3 @@
+Limitar a quantidade de caracteres do arquivo criado exibidos na mensagem de confirmação
+
+Refatorar lógica dos tools, eles deverão agir como uma classe que possui os aliases, o promptbuilder daquele Tool dentro dele mesmo, os métodos que vão ser as ações daquele Tool, tudo embutido nele e o Tool manager vai só varrer a pasta para dizer pra ia quais são os tools disponíveis e quando a ia chamar o Tool, o próprio Tool vai ter tudo o que precisa para rodar dentro dele, sem ter essas características espalhadas pelos modos hardcoded
