@@ -7,10 +7,10 @@ const originalError = console.error;
 console.log = (...args) => { logStream.write(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 4) : String(a)).join(' ') + '\n'); originalLog(...args); };
 console.error = (...args) => { logStream.write('[ERRO] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 4) : String(a)).join(' ') + '\n'); originalError(...args); };
 
-const { salvarMensagem, buscarUltimasMensagens } = require('./src/memory/memoryManager');
+const { salvarMensagem, buscarUltimasMensagens, removerUltimaMensagemUsuario } = require('./src/memory/memoryManager');
 const { buildPrompt } = require('./src/core/promptBuilder');
 const { llmClient } = require('./src/core/llmClient');
-const { parseAndValidate } = require('./src/core/jsonExtractor');
+const { parseAndValidate, isUsingFallback } = require('./src/core/jsonExtractor');
 const { executeToolCall } = require('./src/tools/toolManager');
 const { formatToolResult } = require('./src/utils/toolFormatter');
 const dbAdapter = require('./src/memory/dbAdapter');
@@ -30,6 +30,9 @@ const VERBOSE = config.verbose === true;
 const REQUEST_TIMEOUT_MS = (config.max_timeout_seconds || 180) * 1000;
 let stopRequested = false;
 
+const senderLocks = new Map();
+const senderActiveLoops = new Set();
+
 console.log('[BOOT] The A-gent iniciando...');
 console.log('[BOOT] Provedor:', config.api.provider, '/ Modelo:', config.api.model);
 console.log('[BOOT] Buffer de memoria:', MAX_BUFFER, 'mensagens');
@@ -39,15 +42,32 @@ console.log('[BOOT] Conectando ao WhatsApp...');
 
 async function processToolLoop(sock, sender, msg) {
   const startTime = Date.now();
+  senderActiveLoops.add(sender);
+  let loopExited = false;
+
+  const exitLoop = () => {
+    if (!loopExited) {
+      loopExited = true;
+      senderActiveLoops.delete(sender);
+    }
+  };
 
   while (Date.now() - startTime < REQUEST_TIMEOUT_MS) {
     if (stopRequested) {
       stopRequested = false;
+      console.log('[LOOP] Parada solicitada, encerrando loop');
+      exitLoop();
       return;
     }
 
     const { getActiveSocket } = require('./src/plugins/whatsapp/connection');
     sock = (typeof getActiveSocket === 'function' ? getActiveSocket() : null) || sock;
+
+    if (stopRequested) {
+      stopRequested = false;
+      exitLoop();
+      return;
+    }
 
     const historico = await buscarUltimasMensagens(MAX_BUFFER);
     const promptPayload = await buildPrompt('[SISTEMA] Ação concluída. Prossiga com o objetivo do usuário ou apresente os resultados finais.', historico);
@@ -76,6 +96,7 @@ async function processToolLoop(sock, sender, msg) {
           await sock.sendMessage(sender, { text: data.resposta });
         }
       }
+      exitLoop();
       return;
     }
 
@@ -105,6 +126,7 @@ async function processToolLoop(sock, sender, msg) {
       if (sock && typeof sock.sendMessage === 'function') {
         await sock.sendMessage(sender, { text: reply });
       }
+      exitLoop();
       return;
     }
 
@@ -118,6 +140,7 @@ async function processToolLoop(sock, sender, msg) {
       if (sock && typeof sock.sendMessage === 'function') {
         await sock.sendMessage(sender, { text: `❌ ${failReply}` });
       }
+      exitLoop();
       return;
     }
 
@@ -138,24 +161,40 @@ async function processToolLoop(sock, sender, msg) {
   if (sock && typeof sock.sendMessage === 'function') {
     await sock.sendMessage(sender, { text: '⏱️ O tempo limite foi atingido. Se precisar de mais detalhes, peca para eu continuar de onde parei.' });
   }
+  exitLoop();
 }
 
 async function processTextMessage(sock, sender, text, msg) {
-  try {
-    const { getActiveSocket } = require('./src/plugins/whatsapp/connection');
-    sock = (typeof getActiveSocket === 'function' ? getActiveSocket() : null) || sock;
+  const { getActiveSocket } = require('./src/plugins/whatsapp/connection');
+  sock = (typeof getActiveSocket === 'function' ? getActiveSocket() : null) || sock;
 
-    console.log('[PROCESS_TEXT] Mensagem recebida de', sender, ':', text ? text.slice(0, 50) : '(midia)');
+  console.log('[PROCESS_TEXT] Mensagem recebida de', sender, ':', text ? text.slice(0, 50) : '(midia)');
 
-    if (text && /^pare$/i.test(text.trim())) {
-      stopRequested = true;
-      console.log('[PROCESS_TEXT] Parada solicitada pelo usuario');
-      if (sock && typeof sock.sendMessage === 'function') {
-        await sock.sendMessage(sender, { text: '🛑 Processo interrompido com sucesso, aguardando novas mensagens.' });
-      }
-      return;
+  if (text && /^pare$/i.test(text.trim())) {
+    stopRequested = true;
+    const removida = await removerUltimaMensagemUsuario();
+    console.log('[PROCESS_TEXT] Parada solicitada pelo usuario. Ultima msg removida:', removida.removed);
+    if (sock && typeof sock.sendMessage === 'function') {
+      await sock.sendMessage(sender, { text: '🛑 Processo interrompido com sucesso, aguardando novas mensagens.' });
     }
+    return;
+  }
 
+  if (senderLocks.get(sender)) {
+    console.log('[PROCESS_TEXT] Ja processando mensagem para', sender, '- enfileirando');
+    await salvarMensagem('user', text);
+    return;
+  }
+  senderLocks.set(sender, true);
+
+  if (senderActiveLoops.has(sender)) {
+    console.log('[PROCESS_TEXT] Loop ativo para', sender, '- aguardando conclusao');
+    await salvarMensagem('user', text);
+    senderLocks.delete(sender);
+    return;
+  }
+
+  try {
     if (msg?.key) {
       if (typeof sock.readMessages === 'function') {
         await sock.readMessages([msg.key]);
@@ -202,6 +241,14 @@ async function processTextMessage(sock, sender, text, msg) {
 
     if (!parsed || !parsed.data) {
       throw new Error('Resposta do LLM nao contem dados validos');
+    }
+
+    if (isUsingFallback(parsed)) {
+      console.log('[PROCESS_TEXT] Resposta usou fallback (IA nao gerou JSON valido) - ignorando tool call');
+      if (sock && typeof sock.sendMessage === 'function') {
+        await sock.sendMessage(sender, { text: parsed.data.resposta }).catch(() => {});
+      }
+      return;
     }
 
     const data = parsed.data;
@@ -266,6 +313,8 @@ async function processTextMessage(sock, sender, text, msg) {
     } else {
       console.warn('[WHATSAPP] sock.sendMessage nao e uma funcao (erro no catch)');
     }
+  } finally {
+    senderLocks.delete(sender);
   }
 }
 

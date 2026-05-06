@@ -80,14 +80,11 @@ function extractJson(rawResponse) {
 }
 
 /**
- * Valida a estrutura do JSON extraído contra o formato esperado pelo sistema.
+ * Valida a estrutura do JSON extraído.
  * @param {object} jsonData - O JSON parseado para validar
  * @returns {{valid: boolean, missingFields: string[]}}
  */
 function validateJsonStructure(jsonData) {
-  const expectedFields = ['resposta', 'acao', 'parametros'];
-  const missingFields = [];
-
   if (typeof jsonData !== 'object' || jsonData === null || Array.isArray(jsonData)) {
     return {
       valid: false,
@@ -95,16 +92,24 @@ function validateJsonStructure(jsonData) {
     };
   }
 
-  for (const field of expectedFields) {
-    if (!(field in jsonData)) {
-      missingFields.push(field);
-    }
+  const missingFields = [];
+  const hasResposta = 'resposta' in jsonData;
+  const hasAcao = 'acao' in jsonData || 'tool_call' in jsonData;
+
+  if (!hasResposta && !hasAcao) {
+    missingFields.push('resposta', 'acao');
   }
 
   return {
     valid: missingFields.length === 0,
     missingFields,
   };
+}
+
+function isUsingFallback(parsed) {
+  return parsed && parsed.data &&
+    parsed.data.resposta === FALLBACK_RESPONSE.resposta &&
+    parsed.success === false;
 }
 
 /**
@@ -130,11 +135,12 @@ function parseAndValidate(rawResponse) {
   if (!validation.valid) {
     const error = `JSON extraído com campos faltando: [${validation.missingFields.join(', ')}]`;
     console.warn('[JSONExtractor]', error);
-    // Mesmo com campos faltando, retorna o que tiver + fallback para campos ausentes
+    const merged = { ...FALLBACK_RESPONSE, ...extracted.data };
+    const hasAcao = !!(merged.acao || merged.tool_call);
     return {
-      success: false,
-      data: { ...FALLBACK_RESPONSE, ...extracted.data },
-      error,
+      success: hasAcao,
+      data: merged,
+      error: hasAcao ? null : error,
     };
   }
 
@@ -149,5 +155,6 @@ module.exports = {
   extractJson,
   validateJsonStructure,
   parseAndValidate,
+  isUsingFallback,
   FALLBACK_RESPONSE,
 };

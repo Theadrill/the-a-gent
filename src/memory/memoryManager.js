@@ -54,8 +54,30 @@ function limparHistorico() {
   });
 }
 
+/**
+ * Remove a última mensagem do usuário do histórico.
+ * Usado quando o usuário interrompe o processamento com "pare".
+ * @returns {Promise<{removed: boolean, id: number|null}>}
+ */
+function removerUltimaMensagemUsuario() {
+  return dbAdapter.init().then((db) => {
+    return new Promise((resolve, reject) => {
+      const sql = 'SELECT id FROM messages WHERE role = ? ORDER BY timestamp DESC LIMIT 1';
+      db.get(sql, ['user'], (err, row) => {
+        if (err) return reject(err);
+        if (!row) return resolve({ removed: false, id: null });
+        db.run('DELETE FROM messages WHERE id = ?', [row.id], function (err) {
+          if (err) return reject(err);
+          resolve({ removed: this.changes > 0, id: row.id });
+        });
+      });
+    });
+  });
+}
+
 module.exports = {
   salvarMensagem,
   buscarUltimasMensagens,
   limparHistorico,
+  removerUltimaMensagemUsuario,
 };
